@@ -79,28 +79,30 @@ export default function Home() {
     }
   }, [criminals]);
 
-  // Realtime chat + load with greeting
-  useEffect(() => {
-    const loadMessages = async () => {
+useEffect(() => {
+  const loadMessages = async () => {
+    try {
       const { data, error } = await supabase
         .from('chat_messages')
         .select('*')
-        .order('created_at', { ascending: true })
-        .limit(50);
+        // .order(...) etc.
 
-      if (error) setChatError('Betöltési hiba: ' + error.message);
-      else {
-        let messages = data || [];
-        if (messages.length === 0) {
-          messages = [
-            { id: '1', nickname: 'Admin', message: 'Üdv a BTK kvízben! Készen állsz a kihívásra? 🔥', created_at: new Date().toISOString() },
-            { id: '2', nickname: 'Játékos1', message: 'Szia! Indulhat a játék!', created_at: new Date().toISOString() },
-          ];
-        }
-        setChatMessages(messages);
-      }
-    };
-    loadMessages();
+      if (error) throw error;
+
+      // set state with data
+    } catch (err) {
+      console.error('Failed to load messages:', err);
+    }
+  };
+
+  loadMessages(); // fire-and-forget
+
+  // Optional: return cleanup if you have subscriptions
+  // return () => { supabase.removeAllSubscriptions(); };
+}, []); // empty deps = run once on mount
+
+
+
 
     const channel = supabase
       .channel('chat_messages_channel')
