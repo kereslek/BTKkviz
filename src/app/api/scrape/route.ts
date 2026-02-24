@@ -175,7 +175,15 @@ export default function Home() {
   const isLatest = currentIndex === questions.length - 1;
 
   return (
-    <div className="min-h-screen bg-[#001f3f] text-white flex flex-col">
+// Remove or comment this entire return JSX block
+// return (
+//   <div className="min-h-screen bg-[#001f3f] text-white flex flex-col">
+//     ...
+//   </div>
+// );
+
+// Replace with proper API response, e.g.:
+return Response.json({ message: "Scraping endpoint" });
       <div className="bg-red-800 p-4 text-center font-bold text-sm md:text-base">
         Ez kizárólag szórakoztató és oktatási célú kvíz. Minden adat hotlinkelve a Rendőrség nyilvános körözési listájáról (police.hu).  
         NEM hivatalos oldal, NEM használható valós feljelentésre vagy cselekvésre!

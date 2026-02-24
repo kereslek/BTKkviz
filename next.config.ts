@@ -1,8 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  experimental: {
-    turbopack: false,  // or remove this line entirely if already present
-  },
+  turbopack: false,  // this disables Turbopack → uses Webpack (stable)
+  // other config...
 };
 
 export default nextConfig;
