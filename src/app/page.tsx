@@ -99,6 +99,15 @@ useEffect(() => {
       }
     });
 
+  // Cleanup: explicitly return a function
+  return function cleanup() {
+    channel.untrack();
+    supabase.removeChannel(channel);
+  };
+}, []);
+
+
+
   // Return cleanup function
   return () => {
     channel.untrack();
