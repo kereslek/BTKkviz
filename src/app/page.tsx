@@ -84,24 +84,27 @@ export default function Home() {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  useEffect(() => {
-    const channel = supabase.channel('online-players');
-    channel
-      .on('presence', { event: 'sync' }, () => {
-        const presenceState = channel.presenceState();
-        const count = Object.keys(presenceState).length;
-        setOnlinePlayers(count);
-      })
-      .subscribe(async (status) => {
-        if (status === 'SUBSCRIBED') {
-          await channel.track({ online: true, userId: generateUUID() });
-        }
-      });
-    return () => {
-      channel.untrack();
-      supabase.removeChannel(channel);
-    };
-  }, []);
+useEffect(() => {
+  const channel = supabase.channel('online-players');
+
+  channel
+    .on('presence', { event: 'sync' }, () => {
+      const presenceState = channel.presenceState();
+      const count = Object.keys(presenceState).length;
+      setOnlinePlayers(count);
+    })
+    .subscribe(async (status) => {
+      if (status === 'SUBSCRIBED') {
+        await channel.track({ online: true, userId: generateUUID() });
+      }
+    });
+
+  // Return cleanup function
+  return () => {
+    channel.untrack();
+    supabase.removeChannel(channel);
+  };
+}, []);
 
   useEffect(() => {
     const fetchTotal = async () => {
