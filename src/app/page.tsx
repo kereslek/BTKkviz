@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import confetti from 'canvas-confetti';
 import html2canvas from 'html2canvas';
+import { useSearchParams } from 'next/navigation';
 
 type Question = {
   criminal: any;
@@ -54,6 +55,8 @@ export default function Home() {
   const [onlinePlayers, setOnlinePlayers] = useState(0);
   const [totalGamesPlayed, setTotalGamesPlayed] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [challengeCriminal, setChallengeCriminal] = useState<any | null>(null);
+  const searchParams = useSearchParams();
 
   const current = questions[currentIndex];
   const isLatest = currentIndex === questions.length - 1;
@@ -70,6 +73,52 @@ export default function Home() {
       const v = c === 'x' ? r : (r & 0x3 | 0x8);
       return v.toString(16);
     });
+  };
+
+  // Handle ?c=ID query param for shared challenge
+  useEffect(() => {
+    const c = searchParams.get('c');
+    if (c) {
+      const fetchChallenge = async () => {
+        const { data, error } = await supabase
+          .from('criminals_cache')
+          .select('*')
+          .eq('id', c)
+          .single();
+
+        if (error || !data) {
+          console.error('Challenge fetch error:', error);
+          return;
+        }
+
+        setChallengeCriminal(data);
+
+        // Generate single question
+        const wrong = generateOptions(data.crime);
+        setQuestions([{
+          criminal: data,
+          options: [data.crime, ...wrong],
+          correctCrime: data.crime,
+          questionNumber: 1,
+          selectedAnswer: null,
+        }]);
+        setCurrentIndex(0);
+      };
+      fetchChallenge();
+    }
+  }, [searchParams]);
+
+  const generateOptions = (correctCrime: string) => {
+    const wrongSet = new Set<string>();
+    const wrongPool = criminals.filter(c => c.crime !== correctCrime && c.police_id).sort(() => 0.5 - Math.random());
+    for (const c of wrongPool) {
+      if (wrongSet.size < 3) wrongSet.add(c.crime);
+    }
+    let wrongCrimes = Array.from(wrongSet);
+    while (wrongCrimes.length < 3) {
+      wrongCrimes.push(wrongCrimes[wrongCrimes.length - 1] || 'Ismeretlen bűncselekmény');
+    }
+    return wrongCrimes.sort(() => 0.5 - Math.random());
   };
 
   useEffect(() => {
@@ -175,11 +224,22 @@ export default function Home() {
       .select('*')
       .not('police_id', 'is', null)
       .not('photo_url', 'is', null)
+      // Aggressive filtering for invalid names
+      .not('name', 'is', null)
+      .neq('name', '')
+      .not('name', 'ilike', '%ismeretlen%')
+      .not('name', 'ilike', '%elfogat%')
+      .not('name', 'ilike', '%személy%')
+      .not('name', 'ilike', '%§%')
+      .not('name', 'ilike', '%adat%')
+      .not('name', 'ilike', '%koroz%')
+      .not('name', 'ilike', '%parancs%')
       .order('fetched_at', { ascending: false });
 
     if (error) {
       console.error('Error fetching criminals:', error);
     } else {
+      console.log('Valid criminals loaded:', data?.length);
       setCriminals(data || []);
     }
     setLoading(false);
@@ -408,8 +468,7 @@ export default function Home() {
       link.href = imageUrl;
       link.click();
 
-      // Fixed: suppress TS warning for feature detection
-      // @ts-expect-error: intentional feature detection for navigator.share/canShare
+      // @ts-expect-error: intentional feature detection
       if (navigator.share && navigator.canShare) {
         const blob = await (await fetch(imageUrl)).blob();
         const file = new File([blob], 'btk-kviz-eredmeny.png', { type: 'image/png' });
@@ -420,7 +479,7 @@ export default function Home() {
         });
       }
     } catch (err) {
-      alert('Kép generálása vagy megosztás sikertelen.');
+      alert('Kép generálása sikertelen.');
     }
   };
 
@@ -428,44 +487,42 @@ export default function Home() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [chatMessages]);
 
-  const content = (
+  return (
     <div className="min-h-screen bg-gradient-to-b from-[#001f3f] to-[#0a2540] text-white flex flex-col relative font-sans">
-      {/* Chat Sidebar */}
+      {/* Chat Sidebar – slim one-liner design */}
       <div
-        className={`fixed top-0 right-0 h-full w-96 bg-gray-950 border-l border-gray-800 shadow-2xl transform transition-transform duration-300 z-50 ${
-          chatOpen ? 'translate-x-0' : 'translate-x-full'
-        }`}
+        className={`fixed top-0 right-0 h-full w-96 bg-gray-950 border-l border-gray-800 shadow-2xl transform transition-transform duration-300 z-50 ${chatOpen ? 'translate-x-0' : 'translate-x-full'}`}
       >
-        <div className="p-5 border-b border-gray-800 flex justify-between items-center bg-gray-900">
-          <h3 className="text-xl font-extrabold text-blue-400">Élő chat</h3>
-          <button onClick={() => setChatOpen(false)} className="text-gray-400 hover:text-white text-2xl font-bold">
+        <div className="p-3 border-b border-gray-800 flex justify-between items-center bg-gray-900">
+          <h3 className="text-lg font-extrabold text-blue-400">Élő chat</h3>
+          <button onClick={() => setChatOpen(false)} className="text-gray-400 hover:text-white text-xl font-bold">
             ×
           </button>
         </div>
-        <div className="p-5 flex flex-col h-[calc(100%-10rem)] overflow-y-auto space-y-4 bg-gray-950 pb-32">
-          {chatError && <p className="text-red-400 text-center font-medium">{chatError}</p>}
+        <div className="p-3 flex flex-col h-[calc(100%-8rem)] overflow-y-auto space-y-1 bg-gray-950">
+          {chatError && <p className="text-red-400 text-center font-medium text-sm">{chatError}</p>}
           {chatMessages.length === 0 && !chatError && (
-            <p className="text-gray-500 text-center italic">Még nincsenek üzenetek...</p>
+            <p className="text-gray-500 text-center italic text-sm">Még nincsenek üzenetek...</p>
           )}
           {chatMessages.map((msg) => (
             <div
               key={msg.id}
-              className={`p-4 rounded-2xl max-w-[85%] shadow-md ${
-                msg.nickname === 'Admin'
-                  ? 'bg-blue-900/50 border border-blue-500/30 self-start'
-                  : 'bg-indigo-900/50 border border-indigo-500/30 self-end'
+              className={`flex flex-col max-w-[95%] text-base leading-tight ${
+                msg.nickname === 'Admin' ? 'self-start' : 'self-end text-right'
               }`}
             >
-              <div className="flex justify-between text-xs text-gray-400 mb-2">
-                <span className="font-bold mr-4">{msg.nickname}&nbsp;&nbsp;&nbsp;&nbsp;</span>
-                <span>{new Date(msg.created_at).toLocaleTimeString('hu-HU', { hour: '2-digit', minute: '2-digit' })}</span>
+              <div className="flex items-baseline gap-2 text-xs text-gray-500 mb-0.5">
+                <span className="font-medium">{msg.nickname}</span>
+                <span className="opacity-70">
+                  {new Date(msg.created_at).toLocaleTimeString('hu-HU', { hour: '2-digit', minute: '2-digit' })}
+                </span>
               </div>
-              <p className="break-words leading-relaxed text-base">{msg.message}</p>
+              <p className="p-1.5 rounded-md bg-gray-800/40 break-words">{msg.message}</p>
             </div>
           ))}
           <div ref={messagesEndRef} />
         </div>
-        <div className="p-5 border-t border-gray-800 absolute bottom-0 left-0 right-0 bg-gray-950">
+        <div className="p-3 border-t border-gray-800 bg-gray-950">
           <input
             type="text"
             placeholder="Beceneved (Enter mentés)"
@@ -478,21 +535,21 @@ export default function Home() {
                 e.currentTarget.blur();
               }
             }}
-            className="w-full p-3 mb-4 bg-gray-900 rounded-xl text-white border border-gray-700 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/50 shadow-inner"
+            className="w-full p-2 mb-2 bg-gray-900 rounded-md text-white border border-gray-700 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 text-sm shadow-inner"
           />
-          <div className="flex gap-3">
+          <div className="flex gap-2">
             <input
               type="text"
               placeholder="Üzenet..."
               value={chatInput}
               onChange={(e) => setChatInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && sendChatMessage()}
-              className="flex-grow p-3 bg-gray-900 rounded-xl text-white border border-gray-700 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/50 shadow-inner"
+              className="flex-grow p-2 bg-gray-900 rounded-md text-white border border-gray-700 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 text-sm shadow-inner"
             />
             <button
               onClick={sendChatMessage}
               disabled={!chatInput.trim() || !chatNickname.trim()}
-              className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-3 rounded-xl font-bold text-white hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+              className="bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-2 rounded-md font-medium text-white hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm shadow-lg"
             >
               Küld
             </button>
@@ -570,7 +627,7 @@ export default function Home() {
                         src={current.criminal.photo_url}
                         alt={current.criminal.name}
                         className="w-56 h-72 md:w-64 md:h-80 object-cover mx-auto rounded-3xl border-4 border-white/80 shadow-2xl transform hover:scale-105 transition-transform duration-300"
-                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                        onError={(e) => (e.currentTarget.style.display = 'none')}
                       />
                     </a>
                   ) : (
@@ -583,9 +640,9 @@ export default function Home() {
                   </h2>
                   <button
                     onClick={generateQuestionShare}
-                    className="absolute top-3 md:top-4 right-3 md:right-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white p-3 md:p-4 rounded-full shadow-xl transform hover:scale-110 transition-all duration-300"
+                    className="absolute top-4 right-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white p-4 md:p-5 rounded-full shadow-2xl transform hover:scale-105 transition-all duration-300"
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 md:h-7 md:w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 md:h-8 md:w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 0 00-5.367-2.684z" />
                     </svg>
                   </button>
@@ -625,18 +682,14 @@ export default function Home() {
                   <button
                     onClick={goBack}
                     disabled={currentIndex <= 0}
-                    className={`px-8 py-4 rounded-2xl font-bold text-lg md:text-xl transition-all ${
-                      currentIndex <= 0 ? 'bg-gray-800 opacity-50 cursor-not-allowed' : 'bg-gradient-to-r from-gray-700 to-gray-800 hover:from-gray-600 hover:to-gray-700 shadow-lg active:scale-95'
-                    }`}
+                    className={`px-8 py-4 rounded-2xl font-bold text-lg md:text-xl transition-all ${currentIndex <= 0 ? 'bg-gray-800 opacity-50 cursor-not-allowed' : 'bg-gradient-to-r from-gray-700 to-gray-800 hover:from-gray-600 hover:to-gray-700 shadow-lg active:scale-95'}`}
                   >
                     ← Vissza
                   </button>
                   <button
                     onClick={goForward}
                     disabled={isLatest}
-                    className={`px-8 py-4 rounded-2xl font-bold text-lg md:text-xl transition-all ${
-                      isLatest ? 'bg-gray-800 opacity-50 cursor-not-allowed' : 'bg-gradient-to-r from-gray-700 to-gray-800 hover:from-gray-600 hover:to-gray-700 shadow-lg active:scale-95'
-                    }`}
+                    className={`px-8 py-4 rounded-2xl font-bold text-lg md:text-xl transition-all ${isLatest ? 'bg-gray-800 opacity-50 cursor-not-allowed' : 'bg-gradient-to-r from-gray-700 to-gray-800 hover:from-gray-600 hover:to-gray-700 shadow-lg active:scale-95'}`}
                   >
                     Előre →
                   </button>
@@ -810,6 +863,4 @@ export default function Home() {
       </footer>
     </div>
   );
-
-  return content;
 }
