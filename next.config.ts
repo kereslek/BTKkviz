@@ -1,6 +1,5 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Your existing images config here...
   images: {
     remotePatterns: [
       {
@@ -14,15 +13,10 @@ const nextConfig = {
       },
     ],
   },
-
-  // FORCE webpack (stable parser, no Turbopack bugs)
+  // This forces webpack (fixes Turbopack parser bug + invalid config)
   experimental: {
     turbopack: false,
   },
-
-  // REMOVE any lines like:
-  // turbopack: true,
-  // experimental: { turbo: ... } or turbopack: true/false
 };
 
 export default nextConfig;

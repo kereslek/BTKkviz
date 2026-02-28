@@ -101,14 +101,10 @@ useEffect(() => {
       }
     });
 
-  // Named cleanup function — avoids inline arrow parsing issues
+  // Named cleanup function – this dodges the "Expression expected" parser crash
   return function cleanup() {
-    try {
-      channel.untrack();
-      supabase.removeChannel(channel);
-    } catch (err) {
-      console.warn('Presence cleanup failed:', err);
-    }
+    channel.untrack();
+    supabase.removeChannel(channel);
   };
 }, []);
 
