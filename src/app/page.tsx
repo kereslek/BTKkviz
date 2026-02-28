@@ -1,5 +1,4 @@
 'use client';
-
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import confetti from 'canvas-confetti';
@@ -59,12 +58,11 @@ export default function Home() {
   const current = questions[currentIndex];
   const isLatest = currentIndex === questions.length - 1;
   const timeTaken = endTime ? Math.round((endTime - startTime) / 1000) : null;
+  const answeredCount = questions.filter(q => q.selectedAnswer !== null).length;
+  const progressPercentage = (answeredCount / 10) * 100;
+
   const cleanCrime = (crime: string) => crime.split(' - ')[0].trim();
   const shareHint = current ? cleanCrime(current.criminal.crime) : 'Bűncselekmény';
-
-  // Progress: only counts fully answered questions (fills to 100% AFTER Q10 answered)
-  const answeredCount = questions.filter(q => q.selectedAnswer !== undefined).length;
-  const progressPercentage = Math.min((answeredCount / 10) * 100, 100);
 
   const generateUUID = () => {
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
@@ -84,38 +82,26 @@ export default function Home() {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
+  useEffect(() => {
+    const channel = supabase.channel('online-players');
 
+    channel
+      .on('presence', { event: 'sync' }, () => {
+        const presenceState = channel.presenceState();
+        const count = Object.keys(presenceState).length;
+        setOnlinePlayers(count);
+      })
+      .subscribe(async (status) => {
+        if (status === 'SUBSCRIBED') {
+          await channel.track({ online: true, userId: generateUUID() });
+        }
+      });
 
-useEffect(() => {
-  const channel = supabase.channel('online-players');
-
-  channel
-    .on('presence', { event: 'sync' }, () => {
-      const presenceState = channel.presenceState();
-      const count = Object.keys(presenceState).length;
-      setOnlinePlayers(count);
-    })
-    .subscribe(async (status) => {
-      if (status === 'SUBSCRIBED') {
-        await channel.track({ online: true, userId: generateUUID() });
-      }
-    });
-
-  // Named cleanup function – this dodges the "Expression expected" parser crash
-  return function cleanup() {
-    channel.untrack();
-    supabase.removeChannel(channel);
-  };
-}, []);
-
-
-
-  // Return cleanup function
-  return () => {
-    channel.untrack();
-    supabase.removeChannel(channel);
-  };
-}, []);
+    return () => {
+      channel.untrack();
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   useEffect(() => {
     const fetchTotal = async () => {
@@ -133,6 +119,55 @@ useEffect(() => {
     fetchCriminals();
   }, []);
 
+  useEffect(() => {
+    const loadMessages = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('chat_messages')
+          .select('*')
+          .order('created_at', { ascending: true })
+          .limit(50);
+
+        if (error) {
+          setChatError('Betöltési hiba: ' + error.message);
+          return;
+        }
+
+        let messages = data || [];
+
+        if (messages.length === 0) {
+          const now = new Date().toISOString();
+          messages = [
+            { id: 'greeting-1', nickname: 'Admin', message: 'Üdv a BTK kvízben! Készen állsz a kihívásra? 🔥', created_at: now },
+            { id: 'greeting-2', nickname: 'Játékos1', message: 'Szia! Indulhat a játék!', created_at: now },
+          ];
+        }
+
+        setChatMessages(messages);
+      } catch (err) {
+        console.error('Chat load error:', err);
+        setChatError('Váratlan hiba a chat betöltésekor.');
+      }
+    };
+
+    loadMessages();
+
+    const channel = supabase
+      .channel('public:chat_messages')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'chat_messages' },
+        (payload) => {
+          setChatMessages((prev) => [...prev, payload.new as ChatMessage]);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
   const fetchCriminals = async () => {
     setLoading(true);
     const { data, error } = await supabase
@@ -140,36 +175,34 @@ useEffect(() => {
       .select('*')
       .not('police_id', 'is', null)
       .not('photo_url', 'is', null)
-      .neq('name', 'Ismeretlen')
-      .neq('name', 'Személyes adatok')
-      .not('name', 'ilike', '%ELFOGATÓPARANCS%')
-      .not('name', 'ilike', '%§%')
       .order('fetched_at', { ascending: false });
 
     if (error) {
       console.error('Error fetching criminals:', error);
     } else {
-      const loadedCriminals = data || [];
-      console.log('Loaded valid criminals:', loadedCriminals.length);
-      setCriminals(loadedCriminals);
+      setCriminals(data || []);
     }
     setLoading(false);
   };
 
   const sendChatMessage = async () => {
     if (!chatInput.trim() || !chatNickname.trim()) return;
-    const optimisticMsg = {
+
+    const optimisticMsg: ChatMessage = {
       id: generateUUID(),
       nickname: chatNickname.trim(),
       message: chatInput.trim().slice(0, 200),
       created_at: new Date().toISOString(),
     };
+
     setChatMessages((prev) => [...prev, optimisticMsg]);
     setChatInput('');
+
     const { error } = await supabase.from('chat_messages').insert({
       nickname: chatNickname.trim(),
       message: chatInput.trim().slice(0, 200),
     });
+
     if (error) {
       setChatError('Küldési hiba: ' + error.message);
       setChatMessages((prev) => prev.filter((m) => m.id !== optimisticMsg.id));
@@ -181,11 +214,7 @@ useEffect(() => {
       setLoading(true);
       const response = await fetch('/api/scrape');
       if (response.ok) {
-        const result = await response.json();
-        console.log('Scraper result:', result);
         await fetchCriminals();
-      } else {
-        console.error('Scraper failed:', response.status);
       }
     } catch (e) {
       console.error('Scraper error:', e);
@@ -222,29 +251,27 @@ useEffect(() => {
       fetchLeaderboard();
       return;
     }
+
     if (criminals.length < 4) return;
 
-    let available = criminals.filter((c) => c.police_id && !usedCriminalIds.has(String(c.police_id)));
-    console.log(`[game] Available pool size: ${available.length}`);
-
+    let available = criminals.filter(c => c.police_id && !usedCriminalIds.has(c.id));
     if (available.length === 0) {
-      console.log('[game] Resetting used IDs - full refresh');
       setUsedCriminalIds(new Set());
       setUsedCrimesGlobal(new Set());
-      available = criminals.filter((c) => c.police_id);
+      available = criminals.filter(c => c.police_id);
       if (available.length < 4) return;
     }
 
     const randomIndex = Math.floor(Math.random() * available.length);
     const correct = available[randomIndex];
-    console.log(`[game] Selected police_id: ${correct.police_id}, name: ${correct.name}`);
-
-    setUsedCriminalIds((prev) => new Set([...prev, String(correct.police_id)]));
-    setUsedCrimesGlobal((prev) => new Set([...prev, correct.crime]));
+    setUsedCriminalIds(prev => new Set([...prev, correct.id]));
+    setUsedCrimesGlobal(prev => new Set([...prev, correct.crime]));
 
     const wrongSet = new Set<string>();
-    const wrongPool = criminals.filter(
-      (c) => String(c.police_id) !== String(correct.police_id) && c.crime !== correct.crime && c.police_id
+    const wrongPool = criminals.filter(c =>
+      c.id !== correct.id &&
+      c.crime !== correct.crime &&
+      c.police_id
     );
     wrongPool.sort(() => 0.5 - Math.random());
     for (const c of wrongPool) {
@@ -265,7 +292,7 @@ useEffect(() => {
       selectedAnswer: null,
     };
 
-    setQuestions((prev) => {
+    setQuestions(prev => {
       const updated = [...prev, newQuestion];
       setCurrentIndex(updated.length - 1);
       return updated;
@@ -274,24 +301,27 @@ useEffect(() => {
 
   const handleAnswer = (answer: string) => {
     if (currentIndex !== questions.length - 1) return;
+
     const isCorrect = answer === questions[currentIndex].correctCrime;
-    setQuestions((prev) => {
+
+    setQuestions(prev => {
       const updated = [...prev];
       updated[currentIndex] = { ...updated[currentIndex], selectedAnswer: answer };
       return updated;
     });
+
     if (isCorrect) {
-      setScore((prev) => prev + 10);
-      setStreak((prev) => prev + 1);
+      setScore(prev => prev + 10);
+      setStreak(prev => prev + 1);
       confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 } });
       setShowFeedback(false);
     } else {
       setStreak(0);
       setShowFeedback(true);
     }
+
     setTimeout(() => {
       setShowFeedback(false);
-      // After final answer → force 100% and end game
       if (questions.length >= 10) {
         setEndTime(Date.now());
         setGameOver(true);
@@ -303,22 +333,22 @@ useEffect(() => {
   };
 
   const goBack = () => {
-    if (currentIndex > 0) setCurrentIndex((prev) => prev - 1);
+    if (currentIndex > 0) setCurrentIndex(prev => prev - 1);
   };
 
   const goForward = () => {
-    if (currentIndex < questions.length - 1) setCurrentIndex((prev) => prev + 1);
+    if (currentIndex < questions.length - 1) setCurrentIndex(prev => prev + 1);
   };
 
   const saveScore = async () => {
     if (score === 0 || nickname.trim() === '') return;
     setSaveStatus('saving');
-    const timeTakenValue = Math.round((Date.now() - startTime) / 1000);
+    const timeTakenVal = Math.round((Date.now() - startTime) / 1000);
     const payload = {
       nickname: nickname.trim(),
       score,
       streak,
-      time_taken: timeTakenValue,
+      time_taken: timeTakenVal,
     };
     const { error } = await supabase.from('high_scores').insert(payload);
     if (error) {
@@ -343,12 +373,7 @@ useEffect(() => {
     if (!current) return alert('Nincs betöltve kérdés!');
     const criminalName = current.criminal.name || 'Ez a személy';
     const hintText = shareHint;
-    const shareText =
-      'Tudod kitalálni, mit követett el ' +
-      criminalName +
-      '? Gyanús bűncselekmény: ' +
-      hintText +
-      '. Gyere játszani és teszteld magad a BTK kvízben!';
+    const shareText = `Tudod kitalálni, mit követett el ${criminalName}? Gyanús bűncselekmény: ${hintText}. Gyere játszani és teszteld magad a BTK kvízben!`;
     try {
       const shareUrl = `${window.location.origin}?c=${current.criminal.id}`;
       if (navigator.share) {
@@ -377,10 +402,14 @@ useEffect(() => {
       });
       const imageUrl = canvas.toDataURL('image/png');
       setShareImageUrl(imageUrl);
+
       const link = document.createElement('a');
       link.download = 'btk-kviz-eredmeny.png';
       link.href = imageUrl;
       link.click();
+
+      // Fixed: suppress TS warning for feature detection
+      // @ts-expect-error: intentional feature detection for navigator.share/canShare
       if (navigator.share && navigator.canShare) {
         const blob = await (await fetch(imageUrl)).blob();
         const file = new File([blob], 'btk-kviz-eredmeny.png', { type: 'image/png' });
@@ -391,11 +420,15 @@ useEffect(() => {
         });
       }
     } catch (err) {
-      alert('Kép generálása sikertelen.');
+      alert('Kép generálása vagy megosztás sikertelen.');
     }
   };
 
-  return (
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMessages]);
+
+  const content = (
     <div className="min-h-screen bg-gradient-to-b from-[#001f3f] to-[#0a2540] text-white flex flex-col relative font-sans">
       {/* Chat Sidebar */}
       <div
@@ -418,7 +451,9 @@ useEffect(() => {
             <div
               key={msg.id}
               className={`p-4 rounded-2xl max-w-[85%] shadow-md ${
-                msg.nickname === 'Admin' ? 'bg-blue-900/50 border border-blue-500/30 self-start' : 'bg-indigo-900/50 border border-indigo-500/30 self-end'
+                msg.nickname === 'Admin'
+                  ? 'bg-blue-900/50 border border-blue-500/30 self-start'
+                  : 'bg-indigo-900/50 border border-indigo-500/30 self-end'
               }`}
             >
               <div className="flex justify-between text-xs text-gray-400 mb-2">
@@ -439,7 +474,7 @@ useEffect(() => {
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 e.preventDefault();
-                if (typeof window !== 'undefined') localStorage.setItem('chatNickname', chatNickname);
+                localStorage.setItem('chatNickname', chatNickname);
                 e.currentTarget.blur();
               }
             }}
@@ -513,8 +548,6 @@ useEffect(() => {
               <p className="text-lg md:text-xl mt-2 text-gray-300">
                 Streak: <span className="text-orange-400 font-bold">{streak} 🔥</span> | Kérdés {current ? current.questionNumber : 0}/10
               </p>
-
-              {/* Progress bar */}
               <div className="mt-4 w-full max-w-md mx-auto bg-gray-700 rounded-full h-4 overflow-hidden shadow-inner">
                 <div
                   className="bg-gradient-to-r from-green-500 via-emerald-400 to-teal-500 h-full transition-all duration-500 ease-out"
@@ -537,7 +570,7 @@ useEffect(() => {
                         src={current.criminal.photo_url}
                         alt={current.criminal.name}
                         className="w-56 h-72 md:w-64 md:h-80 object-cover mx-auto rounded-3xl border-4 border-white/80 shadow-2xl transform hover:scale-105 transition-transform duration-300"
-                        onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                       />
                     </a>
                   ) : (
@@ -563,6 +596,7 @@ useEffect(() => {
                     const isSelected = current.selectedAnswer === opt;
                     const isCorrect = opt === current.correctCrime;
                     let buttonClass = 'p-4 md:p-6 rounded-2xl text-base md:text-xl font-bold transition-all duration-300 shadow-lg border-2 border-transparent';
+
                     if (isSelected && !isCorrect) {
                       buttonClass += ' bg-red-600 text-white border-red-400 ring-4 ring-red-300/50';
                     } else if ((isSelected && isCorrect) || (showFeedback && isCorrect)) {
@@ -573,6 +607,7 @@ useEffect(() => {
                     } else {
                       buttonClass += ' bg-gray-800 opacity-70 cursor-not-allowed border-gray-700';
                     }
+
                     return (
                       <button
                         key={idx}
@@ -587,10 +622,22 @@ useEffect(() => {
                 </div>
 
                 <div className="flex justify-center gap-6 md:gap-8 mt-8 md:mt-10 mb-6">
-                  <button onClick={goBack} disabled={currentIndex <= 0} className={`px-8 py-4 rounded-2xl font-bold text-lg md:text-xl transition-all ${currentIndex <= 0 ? 'bg-gray-800 opacity-50 cursor-not-allowed' : 'bg-gradient-to-r from-gray-700 to-gray-800 hover:from-gray-600 hover:to-gray-700 shadow-lg active:scale-95'}`}>
+                  <button
+                    onClick={goBack}
+                    disabled={currentIndex <= 0}
+                    className={`px-8 py-4 rounded-2xl font-bold text-lg md:text-xl transition-all ${
+                      currentIndex <= 0 ? 'bg-gray-800 opacity-50 cursor-not-allowed' : 'bg-gradient-to-r from-gray-700 to-gray-800 hover:from-gray-600 hover:to-gray-700 shadow-lg active:scale-95'
+                    }`}
+                  >
                     ← Vissza
                   </button>
-                  <button onClick={goForward} disabled={isLatest} className={`px-8 py-4 rounded-2xl font-bold text-lg md:text-xl transition-all ${isLatest ? 'bg-gray-800 opacity-50 cursor-not-allowed' : 'bg-gradient-to-r from-gray-700 to-gray-800 hover:from-gray-600 hover:to-gray-700 shadow-lg active:scale-95'}`}>
+                  <button
+                    onClick={goForward}
+                    disabled={isLatest}
+                    className={`px-8 py-4 rounded-2xl font-bold text-lg md:text-xl transition-all ${
+                      isLatest ? 'bg-gray-800 opacity-50 cursor-not-allowed' : 'bg-gradient-to-r from-gray-700 to-gray-800 hover:from-gray-600 hover:to-gray-700 shadow-lg active:scale-95'
+                    }`}
+                  >
                     Előre →
                   </button>
                 </div>
@@ -648,6 +695,7 @@ useEffect(() => {
               >
                 {saveStatus === 'saving' ? 'Mentés...' : saveStatus === 'success' ? 'Mentve ✓' : 'Mentés a ranglistára'}
               </button>
+
               {saveStatus === 'success' && (
                 <p className="text-green-400 text-xl md:text-2xl mt-4 font-bold animate-pulse">Pontjaid mentve! 🏆</p>
               )}
@@ -659,7 +707,6 @@ useEffect(() => {
                 <h3 className="text-4xl md:text-5xl font-extrabold text-yellow-400 mb-6 md:mb-8 text-center drop-shadow-2xl">
                   Ranglista (Top 10)
                 </h3>
-
                 {leaderboard.length === 0 ? (
                   <p className="text-gray-400 text-2xl md:text-3xl italic text-center">
                     Még nincsenek mentett pontok... Légy az első! 🔥
@@ -701,7 +748,6 @@ useEffect(() => {
                             </p>
                           </div>
                         </div>
-
                         <span className="text-2xl md:text-4xl font-extrabold text-green-400 drop-shadow-lg whitespace-nowrap text-right w-full sm:w-auto">
                           {entry.score} pont
                         </span>
@@ -759,9 +805,11 @@ useEffect(() => {
       </div>
 
       <footer className="bg-gradient-to-t from-red-950 to-red-900 p-6 md:p-8 text-center text-base md:text-lg mt-auto shadow-inner">
-        Ez kizárólag szórakoztató és oktatási célú kvízjáték, emellett a hatóságok munkájának segítése és a közbiztonsági tudatosság növelése céljából is.
+        Ez kizárólag szórakoztató és oktatási célú kvízjáték, emellett a hatóságok munkájának segítése és a közbiztonsági tudatosság növelése céljából is.<br />
         Kérdés esetén: kereslek.wanted@proton.me
       </footer>
     </div>
   );
+
+  return content;
 }
