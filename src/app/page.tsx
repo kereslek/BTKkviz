@@ -84,6 +84,8 @@ export default function Home() {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
+
+
 useEffect(() => {
   const channel = supabase.channel('online-players');
 
@@ -99,10 +101,14 @@ useEffect(() => {
       }
     });
 
-  // Cleanup: explicitly return a function
+  // Named cleanup function — avoids inline arrow parsing issues
   return function cleanup() {
-    channel.untrack();
-    supabase.removeChannel(channel);
+    try {
+      channel.untrack();
+      supabase.removeChannel(channel);
+    } catch (err) {
+      console.warn('Presence cleanup failed:', err);
+    }
   };
 }, []);
 
