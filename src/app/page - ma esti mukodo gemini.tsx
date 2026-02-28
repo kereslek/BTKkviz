@@ -1,3 +1,4 @@
+// src/app/page.tsx
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
@@ -62,10 +63,6 @@ export default function Home() {
   const cleanCrime = (crime: string) => crime.split(' - ')[0].trim();
   const shareHint = current ? cleanCrime(current.criminal.crime) : 'Bűncselekmény';
 
-  // Progress: only counts fully answered questions (fills to 100% AFTER Q10 answered)
-  const answeredCount = questions.filter(q => q.selectedAnswer !== undefined).length;
-  const progressPercentage = Math.min((answeredCount / 10) * 100, 100);
-
   const generateUUID = () => {
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
       const r = Math.random() * 16 | 0;
@@ -126,18 +123,21 @@ export default function Home() {
       .select('*')
       .not('police_id', 'is', null)
       .not('photo_url', 'is', null)
+      // Exclude specific placeholder names
       .neq('name', 'Ismeretlen')
       .neq('name', 'Személyes adatok')
-      .not('name', 'ilike', '%ELFOGATÓPARANCS%')
+      .neq('name', 'ELFOGATÓPARANCS ALAPJÁN KÖRÖZÖTT SZEMÉLY')
+      // Exclude strings containing sections or specific headers
       .not('name', 'ilike', '%§%')
+      .not('name', 'ilike', '%ELFOGATÓPARANCS%')
       .order('fetched_at', { ascending: false });
 
     if (error) {
-      console.error('Error fetching criminals:', error);
+      console.error('Fetch error:', error);
     } else {
-      const loadedCriminals = data || [];
-      console.log('Loaded valid criminals:', loadedCriminals.length);
-      setCriminals(loadedCriminals);
+      const loaded = data || [];
+      console.log(`Loaded valid criminals: ${loaded.length}`);
+      setCriminals(loaded);
     }
     setLoading(false);
   };
@@ -210,25 +210,29 @@ export default function Home() {
     }
     if (criminals.length < 4) return;
 
-    let available = criminals.filter((c) => c.police_id && !usedCriminalIds.has(String(c.police_id)));
+    // Use police_id as key (stringified for Set safety)
+    let available = criminals.filter(c => c.police_id && !usedCriminalIds.has(String(c.police_id)));
+    
     console.log(`[game] Available pool size: ${available.length}`);
 
     if (available.length === 0) {
       console.log('[game] Resetting used IDs - full refresh');
       setUsedCriminalIds(new Set());
       setUsedCrimesGlobal(new Set());
-      available = criminals.filter((c) => c.police_id);
+      available = criminals.filter(c => c.police_id);
       if (available.length < 4) return;
     }
 
     const randomIndex = Math.floor(Math.random() * available.length);
     const correct = available[randomIndex];
+    
     console.log(`[game] Selected police_id: ${correct.police_id}, name: ${correct.name}`);
 
-    setUsedCriminalIds((prev) => new Set([...prev, String(correct.police_id)]));
-    setUsedCrimesGlobal((prev) => new Set([...prev, correct.crime]));
+    setUsedCriminalIds(prev => new Set([...prev, String(correct.police_id)]));
+    setUsedCrimesGlobal(prev => new Set([...prev, correct.crime]));
 
     const wrongSet = new Set<string>();
+    // Ensure wrong crimes don't belong to the same person
     const wrongPool = criminals.filter(
       (c) => String(c.police_id) !== String(correct.police_id) && c.crime !== correct.crime && c.police_id
     );
@@ -277,7 +281,6 @@ export default function Home() {
     }
     setTimeout(() => {
       setShowFeedback(false);
-      // After final answer → force 100% and end game
       if (questions.length >= 10) {
         setEndTime(Date.now());
         setGameOver(true);
@@ -329,12 +332,7 @@ export default function Home() {
     if (!current) return alert('Nincs betöltve kérdés!');
     const criminalName = current.criminal.name || 'Ez a személy';
     const hintText = shareHint;
-    const shareText =
-      'Tudod kitalálni, mit követett el ' +
-      criminalName +
-      '? Gyanús bűncselekmény: ' +
-      hintText +
-      '. Gyere játszani és teszteld magad a BTK kvízben!';
+    const shareText = `Tudod kitalálni, mit követett el ${criminalName}? Gyanús bűncselekmény: ${hintText}. Gyere játszani és teszteld magad a BTK kvízben!`;
     try {
       const shareUrl = `${window.location.origin}?c=${current.criminal.id}`;
       if (navigator.share) {
@@ -403,20 +401,22 @@ export default function Home() {
           {chatMessages.map((msg) => (
             <div
               key={msg.id}
-              className={`p-4 rounded-2xl max-w-[85%] shadow-md ${
-                msg.nickname === 'Admin' ? 'bg-blue-900/50 border border-blue-500/30 self-start' : 'bg-indigo-900/50 border border-indigo-500/30 self-end'
+              className={`p-3 rounded-lg max-w-[90%] shadow-sm ${
+                msg.nickname === 'Admin'
+                  ? 'bg-blue-900/40 border border-blue-600/30 self-start'
+                  : 'bg-indigo-900/40 border border-indigo-600/30 self-end'
               }`}
             >
-              <div className="flex justify-between text-xs text-gray-400 mb-2">
-                <span className="font-bold mr-4">{msg.nickname}&nbsp;&nbsp;&nbsp;&nbsp;</span>
+              <div className="flex justify-between text-xs text-gray-400 mb-1">
+                <span className="font-semibold">{msg.nickname}</span>
                 <span>{new Date(msg.created_at).toLocaleTimeString('hu-HU', { hour: '2-digit', minute: '2-digit' })}</span>
               </div>
-              <p className="break-words leading-relaxed text-base">{msg.message}</p>
+              <p className="text-sm leading-relaxed break-words">{msg.message}</p>
             </div>
           ))}
           <div ref={messagesEndRef} />
         </div>
-        <div className="p-5 border-t border-gray-800 absolute bottom-0 left-0 right-0 bg-gray-950">
+        <div className="p-4 border-t border-gray-800 absolute bottom-0 left-0 right-0 bg-gray-950">
           <input
             type="text"
             placeholder="Beceneved (Enter mentés)"
@@ -429,21 +429,21 @@ export default function Home() {
                 e.currentTarget.blur();
               }
             }}
-            className="w-full p-3 mb-4 bg-gray-900 rounded-xl text-white border border-gray-700 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/50 shadow-inner"
+            className="w-full p-2.5 mb-3 bg-gray-900 rounded-lg text-white border border-gray-700 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/50 text-sm"
           />
-          <div className="flex gap-3">
+          <div className="flex gap-2">
             <input
               type="text"
               placeholder="Üzenet..."
               value={chatInput}
               onChange={(e) => setChatInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && sendChatMessage()}
-              className="flex-grow p-3 bg-gray-900 rounded-xl text-white border border-gray-700 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/50 shadow-inner"
+              className="flex-grow p-2.5 bg-gray-900 rounded-lg text-white border border-gray-700 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/50 text-sm"
             />
             <button
               onClick={sendChatMessage}
               disabled={!chatInput.trim() || !chatNickname.trim()}
-              className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-3 rounded-xl font-bold text-white hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+              className="bg-gradient-to-r from-blue-600 to-indigo-600 px-5 py-2.5 rounded-lg font-medium text-white hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-md text-sm"
             >
               Küld
             </button>
@@ -454,9 +454,9 @@ export default function Home() {
       {!chatOpen && (
         <button
           onClick={() => setChatOpen(true)}
-          className="fixed top-4 right-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-4 rounded-full shadow-2xl z-50 flex items-center justify-center hover:scale-110 transition-transform duration-200"
+          className="fixed top-4 right-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-3 rounded-full shadow-2xl z-50 flex items-center justify-center hover:scale-110 transition-transform duration-200"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
           </svg>
         </button>
@@ -500,11 +500,10 @@ export default function Home() {
                 Streak: <span className="text-orange-400 font-bold">{streak} 🔥</span> | Kérdés {current ? current.questionNumber : 0}/10
               </p>
 
-              {/* Progress bar */}
-              <div className="mt-4 w-full max-w-md mx-auto bg-gray-700 rounded-full h-4 overflow-hidden shadow-inner">
+              <div className="mt-4 w-full max-w-md mx-auto bg-gray-700 rounded-full h-3 overflow-hidden">
                 <div
-                  className="bg-gradient-to-r from-green-500 via-emerald-400 to-teal-500 h-full transition-all duration-500 ease-out"
-                  style={{ width: `${progressPercentage}%` }}
+                  className="bg-gradient-to-r from-green-500 to-emerald-400 h-3 transition-all duration-500 ease-out"
+                  style={{ width: `${(questions.length / 10) * 100}%` }}
                 />
               </div>
             </div>
@@ -520,10 +519,13 @@ export default function Home() {
                       className="block cursor-pointer"
                     >
                       <img
-                        src={current.criminal.photo_url}
-                        alt={current.criminal.name}
+                        src={`/api/proxy-image?url=${encodeURIComponent(current.criminal.photo_url)}`}
+                        alt={current.criminal.name || 'Körözött személy'}
                         className="w-56 h-72 md:w-64 md:h-80 object-cover mx-auto rounded-3xl border-4 border-white/80 shadow-2xl transform hover:scale-105 transition-transform duration-300"
-                        onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = '/no-photo-placeholder.png'; 
+                          (e.target as HTMLImageElement).alt = 'Fotó nem elérhető';
+                        }}
                       />
                     </a>
                   ) : (
@@ -531,9 +533,11 @@ export default function Home() {
                       Nincs fotó
                     </div>
                   )}
+
                   <h2 className="text-3xl md:text-5xl font-extrabold mt-4 md:mt-6 text-yellow-400 drop-shadow-lg">
                     {current.criminal.name || 'Ismeretlen'}
                   </h2>
+
                   <button
                     onClick={generateQuestionShare}
                     className="absolute top-3 md:top-4 right-3 md:right-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white p-3 md:p-4 rounded-full shadow-xl transform hover:scale-110 transition-all duration-300"
@@ -562,7 +566,7 @@ export default function Home() {
                     return (
                       <button
                         key={idx}
-                        onClick={() => isLatest ? handleAnswer(opt) : undefined}
+                        onClick={() => (isLatest ? handleAnswer(opt) : undefined)}
                         disabled={!isLatest}
                         className={buttonClass}
                       >
@@ -573,10 +577,26 @@ export default function Home() {
                 </div>
 
                 <div className="flex justify-center gap-6 md:gap-8 mt-8 md:mt-10 mb-6">
-                  <button onClick={goBack} disabled={currentIndex <= 0} className={`px-8 py-4 rounded-2xl font-bold text-lg md:text-xl transition-all ${currentIndex <= 0 ? 'bg-gray-800 opacity-50 cursor-not-allowed' : 'bg-gradient-to-r from-gray-700 to-gray-800 hover:from-gray-600 hover:to-gray-700 shadow-lg active:scale-95'}`}>
+                  <button
+                    onClick={goBack}
+                    disabled={currentIndex <= 0}
+                    className={`px-8 py-4 rounded-2xl font-bold text-lg md:text-xl transition-all ${
+                      currentIndex <= 0
+                        ? 'bg-gray-800 opacity-50 cursor-not-allowed'
+                        : 'bg-gradient-to-r from-gray-700 to-gray-800 hover:from-gray-600 hover:to-gray-700 shadow-lg active:scale-95'
+                    }`}
+                  >
                     ← Vissza
                   </button>
-                  <button onClick={goForward} disabled={isLatest} className={`px-8 py-4 rounded-2xl font-bold text-lg md:text-xl transition-all ${isLatest ? 'bg-gray-800 opacity-50 cursor-not-allowed' : 'bg-gradient-to-r from-gray-700 to-gray-800 hover:from-gray-600 hover:to-gray-700 shadow-lg active:scale-95'}`}>
+                  <button
+                    onClick={goForward}
+                    disabled={isLatest}
+                    className={`px-8 py-4 rounded-2xl font-bold text-lg md:text-xl transition-all ${
+                      isLatest
+                        ? 'bg-gray-800 opacity-50 cursor-not-allowed'
+                        : 'bg-gradient-to-r from-gray-700 to-gray-800 hover:from-gray-600 hover:to-gray-700 shadow-lg active:scale-95'
+                    }`}
+                  >
                     Előre →
                   </button>
                 </div>
@@ -595,13 +615,6 @@ export default function Home() {
                 ÚJ JÁTÉK
               </button>
             </div>
-
-            {shareImageUrl && (
-              <div className="mt-10 md:mt-12">
-                <img src={shareImageUrl} alt="Share preview" className="max-w-full rounded-3xl shadow-2xl mx-auto border-4 border-white/30" />
-                <p className="text-base md:text-lg text-gray-400 mt-4 text-center">Kép generálva – letöltve vagy megosztható</p>
-              </div>
-            )}
           </div>
         ) : (
           <div className="text-center py-20 md:py-24">
@@ -612,10 +625,12 @@ export default function Home() {
               Összesen: <span className="text-green-400">{score} pont</span>
             </p>
             <p className="text-3xl md:text-4xl mb-10 md:mb-12 flex justify-center items-center gap-4">
-              Streak: <span className="text-orange-400 font-extrabold">{streak}</span> <span className="text-6xl animate-pulse">🔥</span> | Idő: <span className="text-blue-300">{timeTaken ? `${timeTaken} másodperc` : '—'}</span>
+              Streak: <span className="text-orange-400 font-extrabold">{streak}</span>{' '}
+              <span className="text-6xl animate-pulse">🔥</span> | Idő:{' '}
+              <span className="text-blue-300">{timeTaken ? `${timeTaken} másodperc` : '—'}</span>
             </p>
 
-            <div className="flex flex-col items-center gap-6 md:gap-8 max-w-3xl mx-auto bg-gray-900/80 p-6 md:p-8 rounded-3xl border border-yellow-500/30 shadow-2xl backdrop-blur-sm">
+            <div className="flex flex-col items-center gap-6 md:gap-8 max-w-md mx-auto bg-gray-900/80 p-8 md:p-10 rounded-3xl border border-yellow-500/30 shadow-2xl backdrop-blur-sm">
               <input
                 type="text"
                 placeholder="Beceneved"
@@ -629,35 +644,71 @@ export default function Home() {
                 onClick={saveScore}
                 disabled={saveStatus === 'saving' || score === 0 || nickname.trim() === ''}
                 className={`w-full px-12 md:px-16 py-5 md:py-6 rounded-3xl text-2xl md:text-3xl font-extrabold shadow-2xl transition-all duration-300 transform hover:scale-105 ${
-                  saveStatus === 'saving' ? 'bg-gray-700 cursor-wait' : saveStatus === 'success' ? 'bg-green-600' : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700'
+                  saveStatus === 'saving'
+                    ? 'bg-gray-700 cursor-wait'
+                    : saveStatus === 'success'
+                    ? 'bg-green-600'
+                    : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700'
                 }`}
               >
                 {saveStatus === 'saving' ? 'Mentés...' : saveStatus === 'success' ? 'Mentve ✓' : 'Mentés a ranglistára'}
               </button>
-              {saveStatus === 'success' && (
-                <p className="text-green-400 text-xl md:text-2xl mt-4 font-bold animate-pulse">Pontjaid mentve! 🏆</p>
-              )}
-              {saveStatus === 'error' && (
-                <p className="text-red-400 text-xl md:text-2xl mt-4 font-bold">Hiba a mentés során – próbáld újra!</p>
-              )}
+              
+              <div className="flex flex-wrap justify-center gap-4 md:gap-6 mt-10 md:mt-12">
+                <button
+                  onClick={generateResultShare}
+                  className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 px-8 md:px-10 py-4 md:py-5 rounded-3xl font-bold text-lg md:text-xl shadow-xl transform hover:scale-105 transition-all"
+                >
+                  Kép letöltése
+                </button>
+                <button
+                  onClick={async () => {
+                    if (navigator.share) {
+                      try {
+                        await navigator.share({
+                          title: 'BTK kvíz eredményem!',
+                          text: `Én ${score} pontot értem el (Streak: ${streak} 🔥, Idő: ${timeTaken ? timeTaken + ' mp' : '?'})! Te tudod-e verni? Játssz most!`,
+                          url: window.location.origin,
+                        });
+                      } catch (err) {
+                        console.log('Web Share failed:', err);
+                        alert('Megosztás nem sikerült – másold a linket!');
+                      }
+                    } else {
+                      alert('A böngésződ nem támogatja a natív megosztást!');
+                    }
+                  }}
+                  className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 px-8 md:px-10 py-4 md:py-5 rounded-3xl font-bold text-lg md:text-xl shadow-xl transform hover:scale-105 transition-all"
+                >
+                  Megosztás
+                </button>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(window.location.origin);
+                    alert('Játék link másolva a vágólapra!');
+                  }}
+                  className="bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 px-8 md:px-10 py-4 md:py-5 rounded-3xl font-bold text-lg md:text-xl shadow-xl transform hover:scale-105 transition-all"
+                >
+                  Link másolása
+                </button>
+              </div>
 
-              <div className="w-full mt-8 md:mt-12">
-                <h3 className="text-4xl md:text-5xl font-extrabold text-yellow-400 mb-6 md:mb-8 text-center drop-shadow-2xl">
-                  Ranglista (Top 10)
+              <div className="w-full mt-12 md:mt-16">
+                <h3 className="text-4xl md:text-5xl font-extrabold text-yellow-400 mb-8 md:mb-10 flex justify-center items-center gap-4 md:gap-5 drop-shadow-2xl">
+                  <span className="text-5xl md:text-6xl animate-bounce">🏆</span> Ranglista (Top 10)
                 </h3>
-
                 {leaderboard.length === 0 ? (
-                  <p className="text-gray-400 text-2xl md:text-3xl italic text-center">
+                  <p className="text-gray-400 text-2xl md:text-3xl italic">
                     Még nincsenek mentett pontok... Légy az első! 🔥
                   </p>
                 ) : (
-                  <div className="space-y-4 md:space-y-5">
+                  <div className="space-y-4 md:space-y-6">
                     {leaderboard.map((entry, idx) => (
                       <div
                         key={entry.id}
-                        className={`flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 p-5 md:p-6 rounded-3xl shadow-xl border backdrop-blur-sm ${
+                        className={`flex flex-col md:flex-row justify-between items-start md:items-center p-4 md:p-6 rounded-3xl shadow-xl border ${
                           idx === 0
-                            ? 'bg-yellow-900/40 border-yellow-500/60'
+                            ? 'bg-yellow-900/40 border-yellow-500/50'
                             : idx === 1
                             ? 'bg-gray-300/20 border-gray-400/50'
                             : idx === 2
@@ -665,30 +716,25 @@ export default function Home() {
                             : 'bg-gray-900/80 border-gray-700'
                         }`}
                       >
-                        <div className="flex items-center gap-4 md:gap-6 w-full sm:w-auto">
+                        <div className="flex items-center gap-4 md:gap-6 mb-2 md:mb-0 w-full md:w-auto">
                           <span
-                            className={`text-4xl md:text-5xl font-extrabold w-14 md:w-20 text-center drop-shadow-lg flex-shrink-0 ${
-                              idx === 0
-                                ? 'text-yellow-400'
-                                : idx === 1
-                                ? 'text-gray-300'
-                                : idx === 2
-                                ? 'text-orange-400'
-                                : 'text-gray-400'
+                            className={`text-3xl md:text-5xl font-extrabold w-12 md:w-20 text-center drop-shadow-lg ${
+                              idx === 0 ? 'text-yellow-400' : idx === 1 ? 'text-gray-300' : idx === 2 ? 'text-orange-400' : 'text-gray-400'
                             }`}
                           >
                             {idx + 1}.
                           </span>
                           <div className="flex-1 min-w-0">
-                            <p className="text-xl md:text-2xl font-bold truncate">{entry.nickname}</p>
-                            <p className="text-sm md:text-base text-gray-300 mt-1">
+                            <p className="text-xl md:text-3xl font-bold truncate">{entry.nickname}</p>
+                            <p className="text-sm md:text-xl text-gray-300 mt-1 truncate">
                               Streak: <span className="text-orange-400 font-bold">{entry.streak} 🔥</span> | Idő:{' '}
-                              <span className="text-blue-300">{entry.time_taken ? `${entry.time_taken} mp` : '?'}</span>
+                              <span className="text-blue-300">
+                                {entry.time_taken ? `${entry.time_taken} mp` : '?'}
+                              </span>
                             </p>
                           </div>
                         </div>
-
-                        <span className="text-2xl md:text-4xl font-extrabold text-green-400 drop-shadow-lg whitespace-nowrap text-right w-full sm:w-auto">
+                        <span className="text-3xl md:text-5xl font-extrabold text-green-400 drop-shadow-lg whitespace-nowrap">
                           {entry.score} pont
                         </span>
                       </div>
@@ -705,25 +751,23 @@ export default function Home() {
               </button>
             </div>
 
-            {/* Hidden result share card */}
+            {/* Hidden result share card for html2canvas */}
             <div ref={resultShareRef} style={{ display: 'none' }}>
               <div className="w-[600px] bg-gradient-to-br from-[#001f3f] to-[#0a2540] text-white p-12 rounded-3xl border-4 border-yellow-500/50 shadow-2xl">
                 <div className="text-center">
                   <h2 className="text-6xl font-extrabold text-yellow-400 mb-8 flex justify-center items-center gap-6 drop-shadow-2xl">
-                    <span className="text-7xl animate-bounce">🏆</span> Kiváló Eredmény!
+                    <span className="text-7xl">🏆</span> Kiváló Eredmény!
                   </h2>
                   <p className="text-5xl mb-8 font-bold">
                     Összesen: <span className="text-green-400">{score} pont</span>
                   </p>
                   <p className="text-4xl mb-12 flex justify-center items-center gap-4">
-                    Streak: <span className="text-orange-400 font-extrabold">{streak}</span> <span className="text-6xl animate-pulse">🔥</span> | Idő:{' '}
+                    Streak: <span className="text-orange-400 font-extrabold">{streak}</span>{' '}
+                    <span className="text-6xl">🔥</span> | Idő:{' '}
                     <span className="text-blue-300">{timeTaken ? `${timeTaken} másodperc` : '—'}</span>
                   </p>
                   <p className="text-3xl mt-12">
                     Gyere te is játszani: <strong className="text-yellow-300">btkkviz.hu</strong>
-                  </p>
-                  <p className="text-xl text-gray-400 mt-4">
-                    Napi friss körözési lista alapján – kihívás mindenkinek! 🚀
                   </p>
                 </div>
               </div>
@@ -731,8 +775,11 @@ export default function Home() {
 
             {shareImageUrl && (
               <div className="mt-12">
-                <img src={shareImageUrl} alt="Share preview" className="max-w-full rounded-3xl shadow-2xl mx-auto border-4 border-white/30" />
-                <p className="text-lg text-gray-400 mt-4 text-center">Kép generálva – letöltve vagy megosztható</p>
+                <img
+                  src={shareImageUrl}
+                  alt="Share preview"
+                  className="max-w-full rounded-3xl shadow-2xl mx-auto border-4 border-white/30"
+                />
               </div>
             )}
           </div>

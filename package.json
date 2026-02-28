@@ -10,11 +10,13 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.97.0",
+    "axios": "^1.13.5",
     "canvas-confetti": "^1.9.4",
     "cheerio": "^1.2.0",
     "html2canvas": "^1.4.1",
     "lucide-react": "^0.575.0",
     "next": "16.1.6",
+    "puppeteer": "^24.37.5",
     "react": "19.2.3",
     "react-dom": "19.2.3"
   },
