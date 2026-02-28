@@ -1,37 +1,98 @@
-// src/app/api/proxy-image/route.ts
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import puppeteer from 'puppeteer';
 
-export async function GET(request: Request) {
-  const url = new URL(request.url);
-  const imageUrl = url.searchParams.get('url');
+export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+  const policeId = searchParams.get('policeId');
 
-  if (!imageUrl) {
-    return NextResponse.json({ error: 'No url provided' }, { status: 400 });
+  if (!policeId) {
+    return NextResponse.json({ error: 'Missing policeId parameter' }, { status: 400 });
   }
 
+  let browser;
   try {
-    const response = await fetch(imageUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      },
+    browser = await puppeteer.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
     });
 
-    if (!response.ok) {
-      return NextResponse.json({ error: `Failed to fetch image: ${response.status}` }, { status: response.status });
+    const page = await browser.newPage();
+    await page.setUserAgent(
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    );
+
+    const url = `https://www.police.hu/hu/koral/elfogatoparancs-alapjan-korozott-szemelyek/${policeId}`;
+    await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
+
+    // Extract name from h1.page-title - FIXED VERSION with type assertion
+    const name = await page.evaluate(() => {
+      const h1 = document.querySelector('h1.page-title') as HTMLElement | null;
+      if (h1) {
+        let text = h1.innerText.trim().toUpperCase();
+        if (
+          text &&
+          text.length > 5 &&
+          !text.includes('ELFOGATÓPARANCS') &&
+          !text.includes('SZEMÉLY') &&
+          !text.includes('KÖRÖZÖTT')
+        ) {
+          return text;
+        }
+      }
+      return null;
+    });
+
+    // If name not found or invalid, try alternative selectors
+    let finalName = name;
+    if (!finalName) {
+      finalName = await page.evaluate(() => {
+        // Try other possible headings or strong elements
+        const alternatives = [
+          document.querySelector('h1'),
+          document.querySelector('.person-name'),
+          document.querySelector('strong'),
+          document.querySelector('h2'),
+        ];
+
+        for (const el of alternatives) {
+          if (el instanceof HTMLElement) {
+            const text = el.innerText.trim().toUpperCase();
+            if (text && text.length > 5 && !text.includes('ELFOGATÓPARANCS')) {
+              return text;
+            }
+          }
+        }
+        return null;
+      });
     }
 
-    const contentType = response.headers.get('content-type') || 'image/jpeg';
-    const buffer = await response.arrayBuffer();
+    // Extract other fields (crime, photo, etc.) - keep your existing logic
+    const data = await page.evaluate(() => {
+      const crimeEl = document.querySelector('.crime-description, .description, p strong');
+      const photoEl = document.querySelector('img[src*="korozott"], img.photo, .person-photo img');
 
-    return new NextResponse(buffer, {
-      status: 200,
-      headers: {
-        'Content-Type': contentType,
-        'Cache-Control': 'public, max-age=86400', // cache 1 day
-      },
+      return {
+        name: finalName || 'Ismeretlen',
+        crime: crimeEl?.textContent?.trim() || 'Nem található bűncselekmény leírás',
+        photoUrl: photoEl?.getAttribute('src') || null,
+      };
+    });
+
+    await browser.close();
+
+    return NextResponse.json({
+      success: true,
+      policeId,
+      name: data.name,
+      crime: data.crime,
+      photoUrl: data.photoUrl ? new URL(data.photoUrl, 'https://www.police.hu').href : null,
     });
   } catch (error) {
-    console.error('[proxy-image] Error fetching:', error);
-    return NextResponse.json({ error: 'Proxy failed' }, { status: 500 });
+    console.error('Name fixer error:', error);
+    if (browser) await browser.close();
+    return NextResponse.json(
+      { error: 'Failed to fix name', details: (error as Error).message },
+      { status: 500 }
+    );
   }
 }

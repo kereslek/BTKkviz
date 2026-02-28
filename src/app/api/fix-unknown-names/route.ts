@@ -1,116 +1,98 @@
-// src/app/api/fix-unknown-names/route.ts
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import puppeteer from 'puppeteer';
-import { supabase } from '@/lib/supabase';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+  const policeId = searchParams.get('policeId');
+
+  if (!policeId) {
+    return NextResponse.json({ error: 'Missing policeId parameter' }, { status: 400 });
+  }
+
+  let browser;
   try {
-    // Select only rows with photo AND crime present, and bad name
-    const { data: rows, error } = await supabase
-      .from('criminals_cache')
-      .select('id, police_id, name, crime, photo_url')
-      .not('photo_url', 'is', null)               // must have image
-      .not('crime', 'is', null)                   // must have crime
-      .neq('crime', '')                           // crime not empty
-      .or(
-        `name.eq.Ismeretlen,` +
-        `name.eq.Személyes adatok,` +
-        `name.eq.ELFOGATÓPARANCS ALAPJÁN KÖRÖZÖTT SZEMÉLY,` +
-        `name.ilike.%BTK%,` +
-        `name.ilike.%§%,` +
-        `name.ilike.%bekezdés%`
-      )
-      .order('fetched_at', { ascending: false });
-
-    if (error) throw error;
-    if (!rows?.length) {
-      return NextResponse.json({ success: true, message: 'No qualifying bad names to fix.' });
-    }
-
-    console.log(`[fix-unknown] Found ${rows.length} rows with photo + crime + bad name`);
-
-    const browser = await puppeteer.launch({
+    browser = await puppeteer.launch({
       headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
     });
+
     const page = await browser.newPage();
+    await page.setUserAgent(
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    );
 
-    let fixedCount = 0;
-    for (const row of rows) {
-      const detailUrl = `https://www.police.hu/hu/koral/elfogatoparancs-alapjan-korozott-szemelyek/${row.police_id}`;
-      try {
-        await page.goto(detailUrl, { waitUntil: 'networkidle2', timeout: 30000 });
-        await sleep(1000);
+    const url = `https://www.police.hu/hu/koral/elfogatoparancs-alapjan-korozott-szemelyek/${policeId}`;
+    await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
 
-        const name = await page.evaluate(() => {
-          // Priority: h1.page-title (actual name)
-          const h1 = document.querySelector('h1.page-title');
-          if (h1) {
-            let text = h1.innerText.trim().toUpperCase();
-            if (text && text.length > 5 && !text.includes('ELFOGATÓPARANCS') && !text.includes('SZEMÉLY') && !text.includes('KÖRÖZÖTT')) {
+    // Extract name from h1.page-title - FIXED VERSION with type assertion
+    const name = await page.evaluate(() => {
+      const h1 = document.querySelector('h1.page-title') as HTMLElement | null;
+      if (h1) {
+        let text = h1.innerText.trim().toUpperCase();
+        if (
+          text &&
+          text.length > 5 &&
+          !text.includes('ELFOGATÓPARANCS') &&
+          !text.includes('SZEMÉLY') &&
+          !text.includes('KÖRÖZÖTT')
+        ) {
+          return text;
+        }
+      }
+      return null;
+    });
+
+    // If name not found or invalid, try alternative selectors
+    let finalName = name;
+    if (!finalName) {
+      finalName = await page.evaluate(() => {
+        // Try other possible headings or strong elements
+        const alternatives = [
+          document.querySelector('h1'),
+          document.querySelector('.person-name'),
+          document.querySelector('strong'),
+          document.querySelector('h2'),
+        ];
+
+        for (const el of alternatives) {
+          if (el instanceof HTMLElement) {
+            const text = el.innerText.trim().toUpperCase();
+            if (text && text.length > 5 && !text.includes('ELFOGATÓPARANCS')) {
               return text;
             }
           }
-
-          // Fallback: Név: field
-          const content = document.querySelector('.content')?.innerText || '';
-          const nameMatch = content.match(/Név:\s*([\w\s]+?)(?=\s*Született|Nem|Állampolgárság|Magasság|Testalkat|Szemszín|Hajszín|Jellegzetesség)/i);
-          if (nameMatch) {
-            let name = nameMatch[1].trim().toUpperCase();
-            if (name && !name.includes('BTK') && !name.includes('§') && name.length > 5) return name;
-          }
-
-          // Last fallback: dt/dd pair for Név:
-          const personal = document.querySelector('#personal-data');
-          if (personal) {
-            const labels = Array.from(personal.querySelectorAll('dt'));
-            const nameIndex = labels.findIndex(dt => dt.innerText.trim() === 'Név:');
-            if (nameIndex > -1) {
-              const nameEl = personal.querySelectorAll('dd')[nameIndex];
-              return nameEl?.innerText.trim().toUpperCase() || null;
-            }
-          }
-
-          return null;
-        });
-
-        if (name && name !== row.name && name !== 'Ismeretlen') {
-          const { error } = await supabase
-            .from('criminals_cache')
-            .update({ name })
-            .eq('id', row.id);
-
-          if (!error) {
-            console.log(`[fix-unknown] Fixed ${row.police_id}: "${row.name}" → "${name}"`);
-            fixedCount++;
-          } else {
-            console.error(`[fix-unknown] Supabase update failed for ${row.police_id}:`, error);
-          }
-        } else {
-          console.log(`[fix-unknown] No better name found for ${row.police_id} (kept "${row.name}")`);
         }
-      } catch (e) {
-        console.error(`[fix-unknown] Failed to process ${row.police_id}:`, e);
-      }
-
-      await sleep(800); // polite delay
+        return null;
+      });
     }
+
+    // Extract other fields (crime, photo, etc.) - keep your existing logic
+    const data = await page.evaluate(() => {
+      const crimeEl = document.querySelector('.crime-description, .description, p strong');
+      const photoEl = document.querySelector('img[src*="korozott"], img.photo, .person-photo img');
+
+      return {
+        name: finalName || 'Ismeretlen',
+        crime: crimeEl?.textContent?.trim() || 'Nem található bűncselekmény leírás',
+        photoUrl: photoEl?.getAttribute('src') || null,
+      };
+    });
 
     await browser.close();
 
     return NextResponse.json({
       success: true,
-      fixed: fixedCount,
-      totalProcessed: rows.length,
+      policeId,
+      name: data.name,
+      crime: data.crime,
+      photoUrl: data.photoUrl ? new URL(data.photoUrl, 'https://www.police.hu').href : null,
     });
   } catch (error) {
-    console.error('[fix-unknown] Global error:', error);
-    return NextResponse.json({ success: false, error: String(error) }, { status: 500 });
+    console.error('Name fixer error:', error);
+    if (browser) await browser.close();
+    return NextResponse.json(
+      { error: 'Failed to fix name', details: (error as Error).message },
+      { status: 500 }
+    );
   }
 }
-
-function sleep(ms: number) {
-  return new Promise((r) => setTimeout(r, ms));
-}
-
-export const dynamic = 'force-dynamic';

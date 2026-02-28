@@ -1,100 +1,107 @@
-// src/app/api/fix-unknown-names/route.ts
 import { NextResponse } from 'next/server';
 import puppeteer from 'puppeteer';
-import { supabase } from '@/lib/supabase';
+import { createClient } from '@supabase/supabase-js';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
 export async function GET() {
+  let browser;
   try {
-    // Get rows with bad names and non-null photo
-    const { data: rows, error } = await supabase
-      .from('criminals_cache')
-      .select('id, police_id')
-      .not('photo_url', 'is', null)
-      .or(`name.eq.Ismeretlen, name.eq.Személyes adatok, name.eq.ELFOGATÓPARANCS ALAPJÁN KÖRÖZÖTT SZEMÉLY, name.ilike.%BTK%, name.ilike.%§%, name.ilike.%bekezdés%`)
-      .order('fetched_at', { ascending: false });
+    console.log('[scrape] Starting...');
 
-    if (error) throw error;
-    if (!rows?.length) {
-      return NextResponse.json({ success: true, message: 'No bad names to fix.' });
-    }
-
-    console.log(`[fix-unknown] Found ${rows.length} rows to fix`);
-
-    const browser = await puppeteer.launch({
+    browser = await puppeteer.launch({
       headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
     });
+
     const page = await browser.newPage();
+    await page.setUserAgent(
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36'
+    );
 
-    let fixedCount = 0;
-    for (const row of rows) {
-      const detailUrl = `https://www.police.hu/hu/koral/elfogatoparancs-alapjan-korozott-szemelyek/${row.police_id}`;
-      try {
-        await page.goto(detailUrl, { waitUntil: 'networkidle2', timeout: 30000 });
-        await sleep(1000);
+    const baseUrl = 'https://www.police.hu/hu/koral/elfogatoparancs-alapjan-korozott-szemelyek';
+    let pageNum = 1;
+    const inserted = [];
+    const errors = [];
 
-        const name = await page.evaluate(() => {
-          // Priority: h1.page-title (actual name)
-          const h1 = document.querySelector('h1.page-title');
-          if (h1) {
-            let text = h1.innerText.trim().toUpperCase();
-            if (text && text.length > 5 && !text.includes('ELFOGATÓPARANCS') && !text.includes('SZEMÉLY') && !text.includes('KÖRÖZÖTT')) {
-              return text;
-            }
-          }
+    while (true) {
+      console.log(`[scrape] Processing page ${pageNum}`);
+      const url = pageNum === 1 ? baseUrl : `${baseUrl}?page=${pageNum}`;
 
-          // Fallback: personal data block after "Név:"
-          const content = document.querySelector('.content')?.innerText || '';
-          const nameMatch = content.match(/Név:\s*([\w\s]+?)(?=\s*Született|Nem|Állampolgárság|Magasság|Testalkat|Szemszín|Hajszín|Jellegzetesség)/i);
-          if (nameMatch) {
-            let name = nameMatch[1].trim().toUpperCase();
-            if (name && !name.includes('BTK') && !name.includes('§') && name.length > 5) return name;
-          }
+      await page.goto(url, { waitUntil: 'networkidle2', timeout: 45000 });
 
-          // Additional fallback: any uppercase text in personal section
-          const personal = document.querySelector('#personal-data');
-          if (personal) {
-            const labels = Array.from(personal.querySelectorAll('dt'));
-            const nameIndex = labels.findIndex(dt => dt.innerText.trim() === 'Név:');
-            if (nameIndex > -1) {
-              const nameEl = personal.querySelectorAll('dd')[nameIndex];
-              return nameEl?.innerText.trim().toUpperCase() || null;
-            }
-          }
+      // Wait for list items to appear
+      await page.waitForSelector('.view-content .views-row', { timeout: 20000 }).catch(() => {});
 
-          return null;
-        });
+      const persons = await page.evaluate(() => {
+        const rows = document.querySelectorAll('.view-content .views-row');
+        return Array.from(rows).map(row => {
+          const link = row.querySelector('a[href*="/elfogatoparancs-alapjan-korozott-szemelyek/"]');
+          const id = link ? link.getAttribute('href')?.split('/').pop() : null;
+          const nameEl = row.querySelector('.views-field-title a');
+          const name = nameEl ? nameEl.textContent?.trim() : null;
+          const photo = row.querySelector('img')?.getAttribute('src') || null;
 
-        if (name) {
+          return { police_id: id, name, photo_url: photo };
+        }).filter(p => p.police_id);
+      });
+
+      if (persons.length === 0) {
+        console.log('[scrape] No more persons → stopping');
+        break;
+      }
+
+      console.log(`[scrape] Found ${persons.length} persons on page ${pageNum}`);
+
+      for (const person of persons) {
+        if (!person.police_id) continue;
+
+        try {
           const { error } = await supabase
             .from('criminals_cache')
-            .update({ name })
-            .eq('id', row.id);
+            .upsert(
+              {
+                police_id: person.police_id,
+                name: person.name || 'Ismeretlen',
+                photo_url: person.photo_url ? `https://www.police.hu${person.photo_url}` : null,
+                fetched_at: new Date().toISOString(),
+              },
+              { onConflict: 'police_id' }
+            );
 
-          if (!error) {
-            console.log(`[fix-unknown] Fixed ${row.police_id} to "${name}"`);
-            fixedCount++;
-          }
-        } else {
-          console.log(`[fix-unknown] No valid name found for ${row.police_id}`);
+          if (error) throw error;
+
+          inserted.push(person.police_id);
+        } catch (err) {
+          errors.push({ id: person.police_id, error: (err as Error).message });
         }
-      } catch (e) {
-        console.error(`[fix-unknown] Failed for ${row.police_id}:`, e);
       }
-      await sleep(500); // Anti-ban delay
+
+            pageNum++;
+      await new Promise(resolve => setTimeout(resolve, 3000)); // polite delay between pages
     }
 
     await browser.close();
 
-    return NextResponse.json({ success: true, fixed: fixedCount });
+    return NextResponse.json({
+      success: true,
+      inserted: inserted.length,
+      errors: errors.length ? errors : undefined,
+      message: errors.length 
+        ? `${inserted.length} inserted, ${errors.length} failed` 
+        : `${inserted.length} persons processed`,
+    });
+
+    
   } catch (error) {
-    console.error('[fix-unknown] Global error:', error);
-    return NextResponse.json({ success: false, error: String(error) }, { status: 500 });
+    console.error('[scrape] Fatal error:', error);
+    if (browser) await browser.close();
+    return NextResponse.json(
+      { error: 'Scrape failed', details: (error as Error).message },
+      { status: 500 }
+    );
   }
 }
-
-function sleep(ms: number) {
-  return new Promise((r) => setTimeout(r, ms));
-}
-
-export const dynamic = 'force-dynamic';

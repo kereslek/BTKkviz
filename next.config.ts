@@ -13,10 +13,8 @@ const nextConfig = {
       },
     ],
   },
-  // This forces webpack (fixes Turbopack parser bug + invalid config)
-  experimental: {
-    turbopack: false,
-  },
+  // Remove any experimental.turbopack line — it's no longer needed or valid here
+  // If you want to force-disable Turbopack, use NEXT_TURBOPACK=0 env var when running build/dev
 };
 
 export default nextConfig;
