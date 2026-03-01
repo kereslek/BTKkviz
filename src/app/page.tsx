@@ -1,9 +1,9 @@
 'use client';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, Suspense } from 'react';
 import { supabase } from '@/lib/supabase';
 import confetti from 'canvas-confetti';
 import html2canvas from 'html2canvas';
-import { useSearchParams } from 'next/navigation';
+import SearchParamsHandler from './SearchParamsHandler';
 
 type Question = {
   criminal: any;
@@ -12,14 +12,12 @@ type Question = {
   questionNumber: number;
   selectedAnswer?: string | null;
 };
-
 type ChatMessage = {
   id: string;
   nickname: string;
   message: string;
   created_at: string;
 };
-
 type ScoreEntry = {
   id: string;
   nickname: string;
@@ -56,14 +54,13 @@ export default function Home() {
   const [totalGamesPlayed, setTotalGamesPlayed] = useState(0);
   const [loading, setLoading] = useState(true);
   const [challengeCriminal, setChallengeCriminal] = useState<any | null>(null);
-  const searchParams = useSearchParams();
+  const [challengeId, setChallengeId] = useState<string | null>(null);
 
   const current = questions[currentIndex];
   const isLatest = currentIndex === questions.length - 1;
   const timeTaken = endTime ? Math.round((endTime - startTime) / 1000) : null;
   const answeredCount = questions.filter(q => q.selectedAnswer !== null).length;
   const progressPercentage = (answeredCount / 10) * 100;
-
   const cleanCrime = (crime: string) => crime.split(' - ')[0].trim();
   const shareHint = current ? cleanCrime(current.criminal.crime) : 'Bűncselekmény';
 
@@ -75,38 +72,37 @@ export default function Home() {
     });
   };
 
-  // Handle ?c=ID query param for shared challenge
+  // Receive ?c= value from Suspense-wrapped SearchParamsHandler
+  const handleChallengeParam = (id: string | null) => {
+    setChallengeId(id);
+  };
+
+  // Challenge mode triggered by challengeId state
   useEffect(() => {
-    const c = searchParams.get('c');
-    if (c) {
-      const fetchChallenge = async () => {
-        const { data, error } = await supabase
-          .from('criminals_cache')
-          .select('*')
-          .eq('id', c)
-          .single();
-
-        if (error || !data) {
-          console.error('Challenge fetch error:', error);
-          return;
-        }
-
-        setChallengeCriminal(data);
-
-        // Generate single question
-        const wrong = generateOptions(data.crime);
-        setQuestions([{
-          criminal: data,
-          options: [data.crime, ...wrong],
-          correctCrime: data.crime,
-          questionNumber: 1,
-          selectedAnswer: null,
-        }]);
-        setCurrentIndex(0);
-      };
-      fetchChallenge();
-    }
-  }, [searchParams]);
+    if (!challengeId) return;
+    const fetchChallenge = async () => {
+      const { data, error } = await supabase
+        .from('criminals_cache')
+        .select('*')
+        .eq('id', challengeId)
+        .single();
+      if (error || !data) {
+        console.error('Challenge fetch error:', error);
+        return;
+      }
+      setChallengeCriminal(data);
+      const wrong = generateOptions(data.crime);
+      setQuestions([{
+        criminal: data,
+        options: [data.crime, ...wrong],
+        correctCrime: data.crime,
+        questionNumber: 1,
+        selectedAnswer: null,
+      }]);
+      setCurrentIndex(0);
+    };
+    fetchChallenge();
+  }, [challengeId]);
 
   const generateOptions = (correctCrime: string) => {
     const wrongSet = new Set<string>();
@@ -133,7 +129,6 @@ export default function Home() {
 
   useEffect(() => {
     const channel = supabase.channel('online-players');
-
     channel
       .on('presence', { event: 'sync' }, () => {
         const presenceState = channel.presenceState();
@@ -145,8 +140,7 @@ export default function Home() {
           await channel.track({ online: true, userId: generateUUID() });
         }
       });
-
-    return () => {
+    return function cleanup() {
       channel.untrack();
       supabase.removeChannel(channel);
     };
@@ -176,14 +170,11 @@ export default function Home() {
           .select('*')
           .order('created_at', { ascending: true })
           .limit(50);
-
         if (error) {
           setChatError('Betöltési hiba: ' + error.message);
           return;
         }
-
         let messages = data || [];
-
         if (messages.length === 0) {
           const now = new Date().toISOString();
           messages = [
@@ -191,16 +182,13 @@ export default function Home() {
             { id: 'greeting-2', nickname: 'Játékos1', message: 'Szia! Indulhat a játék!', created_at: now },
           ];
         }
-
         setChatMessages(messages);
       } catch (err) {
         console.error('Chat load error:', err);
         setChatError('Váratlan hiba a chat betöltésekor.');
       }
     };
-
     loadMessages();
-
     const channel = supabase
       .channel('public:chat_messages')
       .on(
@@ -211,7 +199,6 @@ export default function Home() {
         }
       )
       .subscribe();
-
     return () => {
       supabase.removeChannel(channel);
     };
@@ -224,7 +211,6 @@ export default function Home() {
       .select('*')
       .not('police_id', 'is', null)
       .not('photo_url', 'is', null)
-      // Aggressive filtering for invalid names
       .not('name', 'is', null)
       .neq('name', '')
       .not('name', 'ilike', '%ismeretlen%')
@@ -235,11 +221,9 @@ export default function Home() {
       .not('name', 'ilike', '%koroz%')
       .not('name', 'ilike', '%parancs%')
       .order('fetched_at', { ascending: false });
-
     if (error) {
       console.error('Error fetching criminals:', error);
     } else {
-      console.log('Valid criminals loaded:', data?.length);
       setCriminals(data || []);
     }
     setLoading(false);
@@ -247,22 +231,18 @@ export default function Home() {
 
   const sendChatMessage = async () => {
     if (!chatInput.trim() || !chatNickname.trim()) return;
-
     const optimisticMsg: ChatMessage = {
       id: generateUUID(),
       nickname: chatNickname.trim(),
       message: chatInput.trim().slice(0, 200),
       created_at: new Date().toISOString(),
     };
-
     setChatMessages((prev) => [...prev, optimisticMsg]);
     setChatInput('');
-
     const { error } = await supabase.from('chat_messages').insert({
       nickname: chatNickname.trim(),
       message: chatInput.trim().slice(0, 200),
     });
-
     if (error) {
       setChatError('Küldési hiba: ' + error.message);
       setChatMessages((prev) => prev.filter((m) => m.id !== optimisticMsg.id));
@@ -311,9 +291,7 @@ export default function Home() {
       fetchLeaderboard();
       return;
     }
-
     if (criminals.length < 4) return;
-
     let available = criminals.filter(c => c.police_id && !usedCriminalIds.has(c.id));
     if (available.length === 0) {
       setUsedCriminalIds(new Set());
@@ -321,12 +299,10 @@ export default function Home() {
       available = criminals.filter(c => c.police_id);
       if (available.length < 4) return;
     }
-
     const randomIndex = Math.floor(Math.random() * available.length);
     const correct = available[randomIndex];
     setUsedCriminalIds(prev => new Set([...prev, correct.id]));
     setUsedCrimesGlobal(prev => new Set([...prev, correct.crime]));
-
     const wrongSet = new Set<string>();
     const wrongPool = criminals.filter(c =>
       c.id !== correct.id &&
@@ -341,9 +317,7 @@ export default function Home() {
     while (wrongCrimes.length < 3) {
       wrongCrimes.push(wrongCrimes[wrongCrimes.length - 1] || 'Ismeretlen bűncselekmény');
     }
-
     const allOptions = [correct.crime, ...wrongCrimes].sort(() => 0.5 - Math.random());
-
     const newQuestion: Question = {
       criminal: correct,
       options: allOptions,
@@ -351,7 +325,6 @@ export default function Home() {
       questionNumber: questions.length + 1,
       selectedAnswer: null,
     };
-
     setQuestions(prev => {
       const updated = [...prev, newQuestion];
       setCurrentIndex(updated.length - 1);
@@ -361,15 +334,12 @@ export default function Home() {
 
   const handleAnswer = (answer: string) => {
     if (currentIndex !== questions.length - 1) return;
-
     const isCorrect = answer === questions[currentIndex].correctCrime;
-
     setQuestions(prev => {
       const updated = [...prev];
       updated[currentIndex] = { ...updated[currentIndex], selectedAnswer: answer };
       return updated;
     });
-
     if (isCorrect) {
       setScore(prev => prev + 10);
       setStreak(prev => prev + 1);
@@ -379,7 +349,6 @@ export default function Home() {
       setStreak(0);
       setShowFeedback(true);
     }
-
     setTimeout(() => {
       setShowFeedback(false);
       if (questions.length >= 10) {
@@ -462,13 +431,11 @@ export default function Home() {
       });
       const imageUrl = canvas.toDataURL('image/png');
       setShareImageUrl(imageUrl);
-
       const link = document.createElement('a');
       link.download = 'btk-kviz-eredmeny.png';
       link.href = imageUrl;
       link.click();
-
-      // @ts-expect-error: intentional feature detection
+      // @ts-expect-error: intentional feature detection (TS thinks it's always true)
       if (navigator.share && navigator.canShare) {
         const blob = await (await fetch(imageUrl)).blob();
         const file = new File([blob], 'btk-kviz-eredmeny.png', { type: 'image/png' });
@@ -479,7 +446,7 @@ export default function Home() {
         });
       }
     } catch (err) {
-      alert('Kép generálása sikertelen.');
+      alert('Kép generálása vagy megosztás sikertelen.');
     }
   };
 
@@ -489,7 +456,13 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#001f3f] to-[#0a2540] text-white flex flex-col relative font-sans">
-      {/* Chat Sidebar – slim one-liner design */}
+
+      {/* Suspense-wrapped SearchParamsHandler reads ?c= without blocking render */}
+      <Suspense fallback={null}>
+        <SearchParamsHandler onChallengeParam={handleChallengeParam} />
+      </Suspense>
+
+      {/* Chat Sidebar */}
       <div
         className={`fixed top-0 right-0 h-full w-96 bg-gray-950 border-l border-gray-800 shadow-2xl transform transition-transform duration-300 z-50 ${chatOpen ? 'translate-x-0' : 'translate-x-full'}`}
       >
@@ -612,7 +585,6 @@ export default function Home() {
                 />
               </div>
             </div>
-
             {current && current.criminal ? (
               <div className="bg-gradient-to-br from-gray-900 to-gray-800 p-5 md:p-8 rounded-3xl shadow-2xl border border-gray-700 relative">
                 <div className="text-center mb-6 md:mb-8">
@@ -647,13 +619,11 @@ export default function Home() {
                     </svg>
                   </button>
                 </div>
-
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-5">
                   {current.options.map((opt, idx) => {
                     const isSelected = current.selectedAnswer === opt;
                     const isCorrect = opt === current.correctCrime;
                     let buttonClass = 'p-4 md:p-6 rounded-2xl text-base md:text-xl font-bold transition-all duration-300 shadow-lg border-2 border-transparent';
-
                     if (isSelected && !isCorrect) {
                       buttonClass += ' bg-red-600 text-white border-red-400 ring-4 ring-red-300/50';
                     } else if ((isSelected && isCorrect) || (showFeedback && isCorrect)) {
@@ -664,7 +634,6 @@ export default function Home() {
                     } else {
                       buttonClass += ' bg-gray-800 opacity-70 cursor-not-allowed border-gray-700';
                     }
-
                     return (
                       <button
                         key={idx}
@@ -677,7 +646,6 @@ export default function Home() {
                     );
                   })}
                 </div>
-
                 <div className="flex justify-center gap-6 md:gap-8 mt-8 md:mt-10 mb-6">
                   <button
                     onClick={goBack}
@@ -700,7 +668,6 @@ export default function Home() {
                 <p className="text-3xl md:text-4xl text-yellow-300 font-bold">Betöltés... 🔥</p>
               </div>
             )}
-
             <div className="mt-10 md:mt-12 text-center">
               <button
                 onClick={startGame}
@@ -709,7 +676,6 @@ export default function Home() {
                 ÚJ JÁTÉK
               </button>
             </div>
-
             {shareImageUrl && (
               <div className="mt-10 md:mt-12">
                 <img src={shareImageUrl} alt="Share preview" className="max-w-full rounded-3xl shadow-2xl mx-auto border-4 border-white/30" />
@@ -728,7 +694,6 @@ export default function Home() {
             <p className="text-3xl md:text-4xl mb-10 md:mb-12 flex justify-center items-center gap-4">
               Streak: <span className="text-orange-400 font-extrabold">{streak}</span> <span className="text-6xl animate-pulse">🔥</span> | Idő: <span className="text-blue-300">{timeTaken ? `${timeTaken} másodperc` : '—'}</span>
             </p>
-
             <div className="flex flex-col items-center gap-6 md:gap-8 max-w-3xl mx-auto bg-gray-900/80 p-6 md:p-8 rounded-3xl border border-yellow-500/30 shadow-2xl backdrop-blur-sm">
               <input
                 type="text"
@@ -748,14 +713,12 @@ export default function Home() {
               >
                 {saveStatus === 'saving' ? 'Mentés...' : saveStatus === 'success' ? 'Mentve ✓' : 'Mentés a ranglistára'}
               </button>
-
               {saveStatus === 'success' && (
                 <p className="text-green-400 text-xl md:text-2xl mt-4 font-bold animate-pulse">Pontjaid mentve! 🏆</p>
               )}
               {saveStatus === 'error' && (
                 <p className="text-red-400 text-xl md:text-2xl mt-4 font-bold">Hiba a mentés során – próbáld újra!</p>
               )}
-
               <div className="w-full mt-8 md:mt-12">
                 <h3 className="text-4xl md:text-5xl font-extrabold text-yellow-400 mb-6 md:mb-8 text-center drop-shadow-2xl">
                   Ranglista (Top 10)
@@ -809,7 +772,6 @@ export default function Home() {
                   </div>
                 )}
               </div>
-
               <button
                 onClick={startGame}
                 className="mt-12 md:mt-16 bg-gradient-to-r from-green-600 via-emerald-500 to-teal-500 hover:from-green-700 hover:via-emerald-600 hover:to-teal-600 px-16 md:px-20 py-6 md:py-8 rounded-3xl text-3xl md:text-4xl font-extrabold shadow-2xl transform hover:scale-105 transition-all duration-300"
@@ -817,8 +779,6 @@ export default function Home() {
                 ÚJ JÁTÉK 🔥
               </button>
             </div>
-
-            {/* Hidden result share card */}
             <div ref={resultShareRef} style={{ display: 'none' }}>
               <div className="w-[600px] bg-gradient-to-br from-[#001f3f] to-[#0a2540] text-white p-12 rounded-3xl border-4 border-yellow-500/50 shadow-2xl">
                 <div className="text-center">
@@ -841,7 +801,6 @@ export default function Home() {
                 </div>
               </div>
             </div>
-
             {shareImageUrl && (
               <div className="mt-12">
                 <img src={shareImageUrl} alt="Share preview" className="max-w-full rounded-3xl shadow-2xl mx-auto border-4 border-white/30" />
