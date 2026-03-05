@@ -72,12 +72,10 @@ export default function Home() {
     });
   };
 
-  // Receive ?c= value from Suspense-wrapped SearchParamsHandler
   const handleChallengeParam = (id: string | null) => {
     setChallengeId(id);
   };
 
-  // Challenge mode triggered by challengeId state
   useEffect(() => {
     if (!challengeId) return;
     const fetchChallenge = async () => {
@@ -411,12 +409,14 @@ export default function Home() {
           text: shareText,
           url: shareUrl,
         });
+        alert('Sikeres megosztás!');
       } else {
-        navigator.clipboard.writeText(shareUrl);
+        await navigator.clipboard.writeText(shareUrl);
         alert('Link kimásolva a vágólapra!');
       }
     } catch (err) {
-      alert('Megosztás nem sikerült.');
+      console.error('Share error:', err);
+      alert('Megosztás nem sikerült. Próbáld újra!');
     }
   };
 
@@ -435,7 +435,7 @@ export default function Home() {
       link.download = 'btk-kviz-eredmeny.png';
       link.href = imageUrl;
       link.click();
-      // @ts-expect-error: intentional feature detection (TS thinks it's always true)
+      // @ts-expect-error: intentional feature detection
       if (navigator.share && navigator.canShare) {
         const blob = await (await fetch(imageUrl)).blob();
         const file = new File([blob], 'btk-kviz-eredmeny.png', { type: 'image/png' });
@@ -446,6 +446,7 @@ export default function Home() {
         });
       }
     } catch (err) {
+      console.error('Share image error:', err);
       alert('Kép generálása vagy megosztás sikertelen.');
     }
   };
@@ -456,13 +457,11 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#001f3f] to-[#0a2540] text-white flex flex-col relative font-sans">
-
-      {/* Suspense-wrapped SearchParamsHandler reads ?c= without blocking render */}
       <Suspense fallback={null}>
         <SearchParamsHandler onChallengeParam={handleChallengeParam} />
       </Suspense>
 
-      {/* Chat Sidebar */}
+      {/* Chat Sidebar – fixed bottom input */}
       <div
         className={`fixed top-0 right-0 h-full w-96 bg-gray-950 border-l border-gray-800 shadow-2xl transform transition-transform duration-300 z-50 ${chatOpen ? 'translate-x-0' : 'translate-x-full'}`}
       >
@@ -472,7 +471,7 @@ export default function Home() {
             ×
           </button>
         </div>
-        <div className="p-3 flex flex-col h-[calc(100%-8rem)] overflow-y-auto space-y-1 bg-gray-950">
+        <div className="p-3 flex flex-col h-[calc(100%-8rem)] overflow-y-auto space-y-1 bg-gray-950 pb-32">
           {chatError && <p className="text-red-400 text-center font-medium text-sm">{chatError}</p>}
           {chatMessages.length === 0 && !chatError && (
             <p className="text-gray-500 text-center italic text-sm">Még nincsenek üzenetek...</p>
@@ -495,7 +494,8 @@ export default function Home() {
           ))}
           <div ref={messagesEndRef} />
         </div>
-        <div className="p-3 border-t border-gray-800 bg-gray-950">
+        {/* Fixed bottom input bar */}
+        <div className="fixed bottom-0 right-0 w-96 bg-gray-950 border-t border-gray-800 p-3 z-50">
           <input
             type="text"
             placeholder="Beceneved (Enter mentés)"
@@ -545,49 +545,51 @@ export default function Home() {
         Ez kizárólag szórakoztató és oktatási célú kvíz.
       </div>
 
-      <header className="p-8 text-center bg-gradient-to-b from-[#001f3f] to-transparent">
-        <h1 className="text-6xl md:text-8xl font-extrabold text-red-500 tracking-tight drop-shadow-lg">BTK kvíz</h1>
-        <p className="text-2xl mt-4 text-gray-300 font-medium">
+      {/* Slightly bigger title (10% increase) */}
+      <header className="p-4 md:p-6 text-center bg-gradient-to-b from-[#001f3f] to-transparent">
+        <h1 className="text-7xl md:text-9xl font-extrabold text-red-500 tracking-tight drop-shadow-lg">BTK kvíz</h1>
+        <p className="text-lg md:text-xl mt-2 text-gray-300 font-medium">
           Találd ki a bűntényt ránézésre! 🔥 Napi friss rendőrségi körözési lista alapján 🕵️‍♂️
         </p>
       </header>
 
-      <main className="flex-grow p-6 md:p-10">
+      <main className="flex-grow p-4 md:p-6">
         {loading ? (
-          <div className="text-center py-16 md:py-20">
-            <p className="text-3xl md:text-4xl text-yellow-300 font-bold">Betöltés... 🔥</p>
+          <div className="text-center py-12 md:py-16">
+            <p className="text-2xl md:text-4xl text-yellow-300 font-bold">Betöltés... 🔥</p>
           </div>
         ) : criminals.length < 4 ? (
-          <div className="text-center py-16 md:py-20">
-            <p className="text-3xl md:text-4xl text-yellow-300 font-bold">
+          <div className="text-center py-12 md:py-16">
+            <p className="text-2xl md:text-4xl text-yellow-300 font-bold">
               Nincs elég érvényes adat – indítsd a scrapert!
             </p>
             <button
               onClick={runScraper}
-              className="mt-8 bg-gradient-to-r from-red-600 via-orange-500 to-yellow-500 hover:from-red-700 hover:via-orange-600 hover:to-yellow-600 px-10 md:px-12 py-5 md:py-6 rounded-3xl font-extrabold text-2xl md:text-3xl shadow-2xl transform hover:scale-105 transition-all duration-300"
+              className="mt-6 bg-gradient-to-r from-red-600 via-orange-500 to-yellow-500 hover:from-red-700 hover:via-orange-600 hover:to-yellow-600 px-8 md:px-12 py-4 md:py-5 rounded-3xl font-extrabold text-xl md:text-3xl shadow-2xl transform hover:scale-105 transition-all duration-300"
             >
               Indítsd a scrapert!
             </button>
           </div>
         ) : !gameOver ? (
           <div className="max-w-4xl mx-auto">
-            <div className="text-center mb-6 md:mb-8">
-              <p className="text-3xl md:text-4xl font-extrabold text-yellow-400 drop-shadow-md">
+            <div className="text-center mb-4 md:mb-6">
+              <p className="text-xl md:text-3xl font-extrabold text-yellow-400 drop-shadow-md">
                 Pontjaid: {score} pont
               </p>
-              <p className="text-lg md:text-xl mt-2 text-gray-300">
+              <p className="text-base md:text-lg mt-1 text-gray-300">
                 Streak: <span className="text-orange-400 font-bold">{streak} 🔥</span> | Kérdés {current ? current.questionNumber : 0}/10
               </p>
-              <div className="mt-4 w-full max-w-md mx-auto bg-gray-700 rounded-full h-4 overflow-hidden shadow-inner">
+              <div className="mt-3 w-full max-w-md mx-auto bg-gray-700 rounded-full h-3 overflow-hidden shadow-inner">
                 <div
                   className="bg-gradient-to-r from-green-500 via-emerald-400 to-teal-500 h-full transition-all duration-500 ease-out"
                   style={{ width: `${progressPercentage}%` }}
                 />
               </div>
             </div>
+
             {current && current.criminal ? (
-              <div className="bg-gradient-to-br from-gray-900 to-gray-800 p-5 md:p-8 rounded-3xl shadow-2xl border border-gray-700 relative">
-                <div className="text-center mb-6 md:mb-8">
+              <div className="bg-gradient-to-br from-gray-900 to-gray-800 p-4 md:p-6 rounded-3xl shadow-2xl border border-gray-700 relative">
+                <div className="text-center mb-4 md:mb-6">
                   {current.criminal.photo_url ? (
                     <a
                       href={`https://www.police.hu/hu/koral/elfogatoparancs-alapjan-korozott-szemelyek/${current.criminal.police_id}`}
@@ -598,27 +600,29 @@ export default function Home() {
                       <img
                         src={current.criminal.photo_url}
                         alt={current.criminal.name}
-                        className="w-56 h-72 md:w-64 md:h-80 object-cover mx-auto rounded-3xl border-4 border-white/80 shadow-2xl transform hover:scale-105 transition-transform duration-300"
+                        className="w-48 h-64 md:w-72 md:h-96 object-cover mx-auto rounded-3xl border-4 border-white/80 shadow-2xl transform hover:scale-105 transition-transform duration-300"
                         onError={(e) => (e.currentTarget.style.display = 'none')}
                       />
                     </a>
                   ) : (
-                    <div className="w-56 h-72 md:w-64 md:h-80 bg-gray-800 mx-auto rounded-3xl flex items-center justify-center text-gray-400 text-2xl border-4 border-white/80 shadow-2xl">
+                    <div className="w-48 h-64 md:w-72 md:h-96 bg-gray-800 mx-auto rounded-3xl flex items-center justify-center text-gray-400 text-xl border-4 border-white/80 shadow-2xl">
                       Nincs fotó
                     </div>
                   )}
-                  <h2 className="text-3xl md:text-5xl font-extrabold mt-4 md:mt-6 text-yellow-400 drop-shadow-lg">
+                  <h2 className="text-2xl md:text-4xl font-extrabold mt-3 md:mt-5 text-yellow-400 drop-shadow-lg">
                     {current.criminal.name || 'Ismeretlen'}
                   </h2>
                   <button
                     onClick={generateQuestionShare}
-                    className="absolute top-4 right-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white p-4 md:p-5 rounded-full shadow-2xl transform hover:scale-105 transition-all duration-300"
+                    className="absolute top-2 right-2 md:top-4 md:right-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white p-3 md:p-4 rounded-full shadow-2xl transform hover:scale-105 transition-all duration-300"
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 md:h-8 md:w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 0 00-5.367-2.684z" />
+                    {/* Fixed share icon - clean modern share/network symbol */}
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 md:h-7 md:w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 0 00-5.367-2.684z" />
                     </svg>
                   </button>
                 </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-5">
                   {current.options.map((opt, idx) => {
                     const isSelected = current.selectedAnswer === opt;
@@ -646,93 +650,96 @@ export default function Home() {
                     );
                   })}
                 </div>
-                <div className="flex justify-center gap-6 md:gap-8 mt-8 md:mt-10 mb-6">
+
+                <div className="flex justify-center gap-4 md:gap-8 mt-6 md:mt-8 mb-4 md:mb-6">
                   <button
                     onClick={goBack}
                     disabled={currentIndex <= 0}
-                    className={`px-8 py-4 rounded-2xl font-bold text-lg md:text-xl transition-all ${currentIndex <= 0 ? 'bg-gray-800 opacity-50 cursor-not-allowed' : 'bg-gradient-to-r from-gray-700 to-gray-800 hover:from-gray-600 hover:to-gray-700 shadow-lg active:scale-95'}`}
+                    className={`px-6 py-3 rounded-2xl font-bold text-base md:text-lg transition-all ${currentIndex <= 0 ? 'bg-gray-800 opacity-50 cursor-not-allowed' : 'bg-gradient-to-r from-gray-700 to-gray-800 hover:from-gray-600 hover:to-gray-700 shadow-lg active:scale-95'}`}
                   >
                     ← Vissza
                   </button>
                   <button
                     onClick={goForward}
                     disabled={isLatest}
-                    className={`px-8 py-4 rounded-2xl font-bold text-lg md:text-xl transition-all ${isLatest ? 'bg-gray-800 opacity-50 cursor-not-allowed' : 'bg-gradient-to-r from-gray-700 to-gray-800 hover:from-gray-600 hover:to-gray-700 shadow-lg active:scale-95'}`}
+                    className={`px-6 py-3 rounded-2xl font-bold text-base md:text-lg transition-all ${isLatest ? 'bg-gray-800 opacity-50 cursor-not-allowed' : 'bg-gradient-to-r from-gray-700 to-gray-800 hover:from-gray-600 hover:to-gray-700 shadow-lg active:scale-95'}`}
                   >
                     Előre →
                   </button>
                 </div>
               </div>
             ) : (
-              <div className="text-center py-16 md:py-20">
-                <p className="text-3xl md:text-4xl text-yellow-300 font-bold">Betöltés... 🔥</p>
+              <div className="text-center py-12 md:py-16">
+                <p className="text-2xl md:text-4xl text-yellow-300 font-bold">Betöltés... 🔥</p>
               </div>
             )}
-            <div className="mt-10 md:mt-12 text-center">
+
+            <div className="mt-8 md:mt-10 text-center">
               <button
                 onClick={startGame}
-                className="bg-gradient-to-r from-red-600 via-orange-500 to-yellow-500 hover:from-red-700 hover:via-orange-600 hover:to-yellow-600 px-10 md:px-12 py-5 md:py-6 rounded-3xl font-extrabold text-2xl md:text-3xl shadow-2xl transform hover:scale-105 transition-all duration-300"
+                className="bg-gradient-to-r from-red-600 via-orange-500 to-yellow-500 hover:from-red-700 hover:via-orange-600 hover:to-yellow-600 px-8 md:px-12 py-4 md:py-5 rounded-3xl font-extrabold text-xl md:text-3xl shadow-2xl transform hover:scale-105 transition-all duration-300"
               >
                 ÚJ JÁTÉK
               </button>
             </div>
+
             {shareImageUrl && (
-              <div className="mt-10 md:mt-12">
+              <div className="mt-8 md:mt-10">
                 <img src={shareImageUrl} alt="Share preview" className="max-w-full rounded-3xl shadow-2xl mx-auto border-4 border-white/30" />
                 <p className="text-base md:text-lg text-gray-400 mt-4 text-center">Kép generálva – letöltve vagy megosztható</p>
               </div>
             )}
           </div>
         ) : (
-          <div className="text-center py-20 md:py-24">
-            <h2 className="text-6xl md:text-7xl font-extrabold text-yellow-400 mb-8 md:mb-10 flex justify-center items-center gap-4 md:gap-6 drop-shadow-2xl">
-              <span className="text-7xl md:text-8xl animate-bounce">🏆</span> Kiváló Eredmény!
+          <div className="text-center py-16 md:py-24">
+            <h2 className="text-5xl md:text-7xl font-extrabold text-yellow-400 mb-6 md:mb-10 flex justify-center items-center gap-4 md:gap-6 drop-shadow-2xl">
+              <span className="text-6xl md:text-8xl animate-bounce">🏆</span> Kiváló Eredmény!
             </h2>
-            <p className="text-5xl md:text-6xl mb-6 md:mb-8 font-bold text-white drop-shadow-lg">
+            <p className="text-4xl md:text-6xl mb-4 md:mb-8 font-bold text-white drop-shadow-lg">
               Összesen: <span className="text-green-400">{score} pont</span>
             </p>
-            <p className="text-3xl md:text-4xl mb-10 md:mb-12 flex justify-center items-center gap-4">
-              Streak: <span className="text-orange-400 font-extrabold">{streak}</span> <span className="text-6xl animate-pulse">🔥</span> | Idő: <span className="text-blue-300">{timeTaken ? `${timeTaken} másodperc` : '—'}</span>
+            <p className="text-2xl md:text-4xl mb-8 md:mb-12 flex justify-center items-center gap-3 md:gap-4">
+              Streak: <span className="text-orange-400 font-extrabold">{streak}</span> <span className="text-5xl md:text-6xl animate-pulse">🔥</span> | Idő: <span className="text-blue-300">{timeTaken ? `${timeTaken} másodperc` : '—'}</span>
             </p>
-            <div className="flex flex-col items-center gap-6 md:gap-8 max-w-3xl mx-auto bg-gray-900/80 p-6 md:p-8 rounded-3xl border border-yellow-500/30 shadow-2xl backdrop-blur-sm">
+            <div className="flex flex-col items-center gap-4 md:gap-6 max-w-3xl mx-auto bg-gray-900/80 p-5 md:p-8 rounded-3xl border border-yellow-500/30 shadow-2xl backdrop-blur-sm">
               <input
                 type="text"
                 placeholder="Beceneved"
                 value={nickname}
                 onChange={(e) => setNickname(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && saveScore()}
-                className="p-5 md:p-6 bg-gray-800 rounded-2xl w-full text-center text-xl md:text-2xl text-white border-2 border-gray-700 focus:outline-none focus:border-yellow-400 focus:ring-4 focus:ring-yellow-400/30 shadow-inner"
+                className="p-4 md:p-6 bg-gray-800 rounded-2xl w-full text-center text-lg md:text-2xl text-white border-2 border-gray-700 focus:outline-none focus:border-yellow-400 focus:ring-4 focus:ring-yellow-400/30 shadow-inner"
                 disabled={saveStatus === 'saving'}
               />
               <button
                 onClick={saveScore}
                 disabled={saveStatus === 'saving' || score === 0 || nickname.trim() === ''}
-                className={`w-full px-12 md:px-16 py-5 md:py-6 rounded-3xl text-2xl md:text-3xl font-extrabold shadow-2xl transition-all duration-300 transform hover:scale-105 ${
+                className={`w-full px-10 md:px-16 py-4 md:py-6 rounded-3xl text-xl md:text-3xl font-extrabold shadow-2xl transition-all duration-300 transform hover:scale-105 ${
                   saveStatus === 'saving' ? 'bg-gray-700 cursor-wait' : saveStatus === 'success' ? 'bg-green-600' : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700'
                 }`}
               >
                 {saveStatus === 'saving' ? 'Mentés...' : saveStatus === 'success' ? 'Mentve ✓' : 'Mentés a ranglistára'}
               </button>
               {saveStatus === 'success' && (
-                <p className="text-green-400 text-xl md:text-2xl mt-4 font-bold animate-pulse">Pontjaid mentve! 🏆</p>
+                <p className="text-green-400 text-lg md:text-2xl mt-3 md:mt-4 font-bold animate-pulse">Pontjaid mentve! 🏆</p>
               )}
               {saveStatus === 'error' && (
-                <p className="text-red-400 text-xl md:text-2xl mt-4 font-bold">Hiba a mentés során – próbáld újra!</p>
+                <p className="text-red-400 text-lg md:text-2xl mt-3 md:mt-4 font-bold">Hiba a mentés során – próbáld újra!</p>
               )}
-              <div className="w-full mt-8 md:mt-12">
-                <h3 className="text-4xl md:text-5xl font-extrabold text-yellow-400 mb-6 md:mb-8 text-center drop-shadow-2xl">
+              <div className="w-full mt-6 md:mt-8">
+                <h3 className="text-3xl md:text-5xl font-extrabold text-yellow-400 mb-4 md:mb-6 text-center drop-shadow-2xl">
                   Ranglista (Top 10)
                 </h3>
                 {leaderboard.length === 0 ? (
-                  <p className="text-gray-400 text-2xl md:text-3xl italic text-center">
+                  <p className="text-gray-400 text-lg md:text-3xl italic text-center">
                     Még nincsenek mentett pontok... Légy az első! 🔥
                   </p>
                 ) : (
-                  <div className="space-y-4 md:space-y-5">
+                  <div className="space-y-3 md:space-y-4">
                     {leaderboard.map((entry, idx) => (
                       <div
                         key={entry.id}
-                        className={`flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 p-5 md:p-6 rounded-3xl shadow-xl border backdrop-blur-sm ${
+                        className={`flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 p-4 md:p-5 rounded-3xl shadow-xl border backdrop-blur-sm ${
                           idx === 0
                             ? 'bg-yellow-900/40 border-yellow-500/60'
                             : idx === 1
@@ -742,9 +749,9 @@ export default function Home() {
                             : 'bg-gray-900/80 border-gray-700'
                         }`}
                       >
-                        <div className="flex items-center gap-4 md:gap-6 w-full sm:w-auto">
+                        <div className="flex items-center gap-3 md:gap-5 w-full sm:w-auto">
                           <span
-                            className={`text-4xl md:text-5xl font-extrabold w-14 md:w-20 text-center drop-shadow-lg flex-shrink-0 ${
+                            className={`text-3xl md:text-5xl font-extrabold w-12 md:w-16 text-center drop-shadow-lg flex-shrink-0 ${
                               idx === 0
                                 ? 'text-yellow-400'
                                 : idx === 1
@@ -757,14 +764,14 @@ export default function Home() {
                             {idx + 1}.
                           </span>
                           <div className="flex-1 min-w-0">
-                            <p className="text-xl md:text-2xl font-bold truncate">{entry.nickname}</p>
+                            <p className="text-lg md:text-2xl font-bold truncate">{entry.nickname}</p>
                             <p className="text-sm md:text-base text-gray-300 mt-1">
                               Streak: <span className="text-orange-400 font-bold">{entry.streak} 🔥</span> | Idő:{' '}
                               <span className="text-blue-300">{entry.time_taken ? `${entry.time_taken} mp` : '?'}</span>
                             </p>
                           </div>
                         </div>
-                        <span className="text-2xl md:text-4xl font-extrabold text-green-400 drop-shadow-lg whitespace-nowrap text-right w-full sm:w-auto">
+                        <span className="text-xl md:text-4xl font-extrabold text-green-400 drop-shadow-lg whitespace-nowrap text-right w-full sm:w-auto">
                           {entry.score} pont
                         </span>
                       </div>
@@ -774,7 +781,7 @@ export default function Home() {
               </div>
               <button
                 onClick={startGame}
-                className="mt-12 md:mt-16 bg-gradient-to-r from-green-600 via-emerald-500 to-teal-500 hover:from-green-700 hover:via-emerald-600 hover:to-teal-600 px-16 md:px-20 py-6 md:py-8 rounded-3xl text-3xl md:text-4xl font-extrabold shadow-2xl transform hover:scale-105 transition-all duration-300"
+                className="mt-8 md:mt-12 bg-gradient-to-r from-green-600 via-emerald-500 to-teal-500 hover:from-green-700 hover:via-emerald-600 hover:to-teal-600 px-12 md:px-20 py-5 md:py-7 rounded-3xl text-2xl md:text-4xl font-extrabold shadow-2xl transform hover:scale-105 transition-all duration-300"
               >
                 ÚJ JÁTÉK 🔥
               </button>
@@ -802,21 +809,19 @@ export default function Home() {
               </div>
             </div>
             {shareImageUrl && (
-              <div className="mt-12">
+              <div className="mt-8 md:mt-12">
                 <img src={shareImageUrl} alt="Share preview" className="max-w-full rounded-3xl shadow-2xl mx-auto border-4 border-white/30" />
-                <p className="text-lg text-gray-400 mt-4 text-center">Kép generálva – letöltve vagy megosztható</p>
+                <p className="text-base md:text-lg text-gray-400 mt-4 text-center">Kép generálva – letöltve vagy megosztható</p>
               </div>
             )}
           </div>
         )}
       </main>
-
-      <div className="text-center py-4 text-lg font-medium text-gray-300 space-y-2">
+      <div className="text-center py-3 text-base font-medium text-gray-300 space-y-1">
         <div>Jelenleg online: {onlinePlayers} játékos</div>
         <div>Összesen lejátszott játékok: {totalGamesPlayed}</div>
       </div>
-
-      <footer className="bg-gradient-to-t from-red-950 to-red-900 p-6 md:p-8 text-center text-base md:text-lg mt-auto shadow-inner">
+      <footer className="bg-gradient-to-t from-red-950 to-red-900 p-4 md:p-6 text-center text-base md:text-lg mt-auto shadow-inner">
         Ez kizárólag szórakoztató és oktatási célú kvízjáték, emellett a hatóságok munkájának segítése és a közbiztonsági tudatosság növelése céljából is.<br />
         Kérdés esetén: kereslek.wanted@proton.me
       </footer>
