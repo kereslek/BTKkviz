@@ -401,22 +401,28 @@ export default function Home() {
     const criminalName = current.criminal.name || 'Ez a személy';
     const hintText = shareHint;
     const shareText = `Tudod kitalálni, mit követett el ${criminalName}? Gyanús bűncselekmény: ${hintText}. Gyere játszani és teszteld magad a BTK kvízben!`;
+    const shareUrl = `${window.location.origin}?c=${current.criminal.id}`;
+
     try {
-      const shareUrl = `${window.location.origin}?c=${current.criminal.id}`;
       if (navigator.share) {
         await navigator.share({
           title: 'BTK kvíz kihívás!',
           text: shareText,
           url: shareUrl,
         });
-        alert('Sikeres megosztás!');
+        alert('Sikeresen megosztva!');
       } else {
         await navigator.clipboard.writeText(shareUrl);
         alert('Link kimásolva a vágólapra!');
       }
     } catch (err) {
-      console.error('Share error:', err);
-      alert('Megosztás nem sikerült. Próbáld újra!');
+      console.error('Share failed:', err);
+      try {
+        await navigator.clipboard.writeText(shareUrl);
+        alert('Link kimásolva a vágólapra!');
+      } catch (clipboardErr) {
+        alert('Megosztás nem sikerült. Kézzel másold ki a linket!');
+      }
     }
   };
 
@@ -431,10 +437,12 @@ export default function Home() {
       });
       const imageUrl = canvas.toDataURL('image/png');
       setShareImageUrl(imageUrl);
+
       const link = document.createElement('a');
       link.download = 'btk-kviz-eredmeny.png';
       link.href = imageUrl;
       link.click();
+
       // @ts-expect-error: intentional feature detection
       if (navigator.share && navigator.canShare) {
         const blob = await (await fetch(imageUrl)).blob();
@@ -461,7 +469,7 @@ export default function Home() {
         <SearchParamsHandler onChallengeParam={handleChallengeParam} />
       </Suspense>
 
-      {/* Chat Sidebar – fixed bottom input */}
+      {/* Chat Sidebar */}
       <div
         className={`fixed top-0 right-0 h-full w-96 bg-gray-950 border-l border-gray-800 shadow-2xl transform transition-transform duration-300 z-50 ${chatOpen ? 'translate-x-0' : 'translate-x-full'}`}
       >
@@ -494,7 +502,6 @@ export default function Home() {
           ))}
           <div ref={messagesEndRef} />
         </div>
-        {/* Fixed bottom input bar */}
         <div className="fixed bottom-0 right-0 w-96 bg-gray-950 border-t border-gray-800 p-3 z-50">
           <input
             type="text"
@@ -545,7 +552,6 @@ export default function Home() {
         Ez kizárólag szórakoztató és oktatási célú kvíz.
       </div>
 
-      {/* Slightly bigger title (10% increase) */}
       <header className="p-4 md:p-6 text-center bg-gradient-to-b from-[#001f3f] to-transparent">
         <h1 className="text-7xl md:text-9xl font-extrabold text-red-500 tracking-tight drop-shadow-lg">BTK kvíz</h1>
         <p className="text-lg md:text-xl mt-2 text-gray-300 font-medium">
@@ -616,8 +622,8 @@ export default function Home() {
                     onClick={generateQuestionShare}
                     className="absolute top-2 right-2 md:top-4 md:right-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white p-3 md:p-4 rounded-full shadow-2xl transform hover:scale-105 transition-all duration-300"
                   >
-                    {/* Fixed share icon - clean modern share/network symbol */}
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 md:h-7 md:w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    {/* Fixed, clean, modern share icon */}
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 md:h-9 md:w-9" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 0 00-5.367-2.684z" />
                     </svg>
                   </button>
