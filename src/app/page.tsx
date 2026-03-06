@@ -140,7 +140,7 @@ export default function Home() {
           await channel.track({ online: true, userId: generateUUID() });
         }
       });
-    return function cleanup() {
+    return () => {
       channel.untrack();
       supabase.removeChannel(channel);
     };
@@ -157,18 +157,18 @@ export default function Home() {
         setTotalGamesPlayed(data.total_games);
       } else {
         console.warn('Stats fetch issue:', error);
-        setTotalGamesPlayed(43); // fallback to your current number
+        setTotalGamesPlayed(43); // fallback
       }
     };
     fetchTotal();
   }, []);
 
-  // Increment total games played every time a game is completed
+  // Increment total games on game completion
   useEffect(() => {
     if (gameOver && questions.length >= 10 && !loading) {
       const incrementGames = async () => {
         try {
-          // Fetch the existing row (single row assumed)
+          // Fetch the existing row
           const { data: current, error: fetchError } = await supabase
             .from('stats')
             .select('id, total_games')
@@ -176,12 +176,12 @@ export default function Home() {
             .single();
 
           if (fetchError) throw fetchError;
-          if (!current) throw new Error('No stats row found - please create one in Supabase');
+          if (!current) throw new Error('No stats row found - create one in Supabase');
 
           const currentTotal = current.total_games ?? 43;
           const newTotal = currentTotal + 1;
 
-          // Update using the real id from the fetched row
+          // Update with the real id
           const { error: updateError } = await supabase
             .from('stats')
             .update({ total_games: newTotal })
@@ -191,8 +191,8 @@ export default function Home() {
 
           setTotalGamesPlayed(newTotal);
           console.log('Total games incremented to:', newTotal);
-        } catch (err) {
-          console.error('Failed to increment total games:', err);
+        } catch (err: any) {
+          console.error('Failed to increment total games:', err.message || err);
         }
       };
       incrementGames();
@@ -234,6 +234,7 @@ export default function Home() {
       }
     };
     loadMessages();
+
     const channel = supabase
       .channel('public:chat_messages')
       .on(
@@ -244,7 +245,11 @@ export default function Home() {
         }
       )
       .subscribe();
-    return () => supabase.removeChannel(channel);
+
+    // Synchronous cleanup (no async return)
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const fetchCriminals = async () => {
