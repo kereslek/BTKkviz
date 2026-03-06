@@ -12,12 +12,14 @@ type Question = {
   questionNumber: number;
   selectedAnswer?: string | null;
 };
+
 type ChatMessage = {
   id: string;
   nickname: string;
   message: string;
   created_at: string;
 };
+
 type ScoreEntry = {
   id: string;
   nickname: string;
@@ -55,6 +57,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [challengeCriminal, setChallengeCriminal] = useState<any | null>(null);
   const [challengeId, setChallengeId] = useState<string | null>(null);
+  const [isAnswering, setIsAnswering] = useState(false);
 
   const current = questions[currentIndex];
   const isLatest = currentIndex === questions.length - 1;
@@ -130,8 +133,7 @@ export default function Home() {
     channel
       .on('presence', { event: 'sync' }, () => {
         const presenceState = channel.presenceState();
-        const count = Object.keys(presenceState).length;
-        setOnlinePlayers(count);
+        setOnlinePlayers(Object.keys(presenceState).length);
       })
       .subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
@@ -146,11 +148,56 @@ export default function Home() {
 
   useEffect(() => {
     const fetchTotal = async () => {
-      const { count, error } = await supabase.from('high_scores').select('*', { count: 'exact', head: true });
-      if (!error) setTotalGamesPlayed(count || 0);
+      const { data, error } = await supabase
+        .from('stats')
+        .select('total_games')
+        .limit(1)
+        .single();
+      if (!error && data && data.total_games !== null) {
+        setTotalGamesPlayed(data.total_games);
+      } else {
+        console.warn('Stats fetch issue:', error);
+        setTotalGamesPlayed(43); // fallback to your current number
+      }
     };
     fetchTotal();
   }, []);
+
+  // Increment total games played every time a game is completed
+  useEffect(() => {
+    if (gameOver && questions.length >= 10 && !loading) {
+      const incrementGames = async () => {
+        try {
+          // Fetch the existing row (single row assumed)
+          const { data: current, error: fetchError } = await supabase
+            .from('stats')
+            .select('id, total_games')
+            .limit(1)
+            .single();
+
+          if (fetchError) throw fetchError;
+          if (!current) throw new Error('No stats row found - please create one in Supabase');
+
+          const currentTotal = current.total_games ?? 43;
+          const newTotal = currentTotal + 1;
+
+          // Update using the real id from the fetched row
+          const { error: updateError } = await supabase
+            .from('stats')
+            .update({ total_games: newTotal })
+            .eq('id', current.id);
+
+          if (updateError) throw updateError;
+
+          setTotalGamesPlayed(newTotal);
+          console.log('Total games incremented to:', newTotal);
+        } catch (err) {
+          console.error('Failed to increment total games:', err);
+        }
+      };
+      incrementGames();
+    }
+  }, [gameOver, questions.length, loading]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -197,9 +244,7 @@ export default function Home() {
         }
       )
       .subscribe();
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => supabase.removeChannel(channel);
   }, []);
 
   const fetchCriminals = async () => {
@@ -331,13 +376,16 @@ export default function Home() {
   };
 
   const handleAnswer = (answer: string) => {
-    if (currentIndex !== questions.length - 1) return;
+    if (currentIndex !== questions.length - 1 || isAnswering) return;
+    setIsAnswering(true);
+
     const isCorrect = answer === questions[currentIndex].correctCrime;
     setQuestions(prev => {
       const updated = [...prev];
       updated[currentIndex] = { ...updated[currentIndex], selectedAnswer: answer };
       return updated;
     });
+
     if (isCorrect) {
       setScore(prev => prev + 10);
       setStreak(prev => prev + 1);
@@ -347,8 +395,10 @@ export default function Home() {
       setStreak(0);
       setShowFeedback(true);
     }
+
     setTimeout(() => {
       setShowFeedback(false);
+      setIsAnswering(false);
       if (questions.length >= 10) {
         setEndTime(Date.now());
         setGameOver(true);
@@ -437,12 +487,10 @@ export default function Home() {
       });
       const imageUrl = canvas.toDataURL('image/png');
       setShareImageUrl(imageUrl);
-
       const link = document.createElement('a');
       link.download = 'btk-kviz-eredmeny.png';
       link.href = imageUrl;
       link.click();
-
       // @ts-expect-error: intentional feature detection
       if (navigator.share && navigator.canShare) {
         const blob = await (await fetch(imageUrl)).blob();
@@ -622,7 +670,6 @@ export default function Home() {
                     onClick={generateQuestionShare}
                     className="absolute top-2 right-2 md:top-4 md:right-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white p-3 md:p-4 rounded-full shadow-2xl transform hover:scale-105 transition-all duration-300"
                   >
-                    {/* Fixed, clean, modern share icon */}
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 md:h-9 md:w-9" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 0 00-5.367-2.684z" />
                     </svg>
@@ -648,7 +695,7 @@ export default function Home() {
                       <button
                         key={idx}
                         onClick={() => isLatest ? handleAnswer(opt) : undefined}
-                        disabled={!isLatest}
+                        disabled={!isLatest || isAnswering}
                         className={buttonClass}
                       >
                         {cleanCrime(opt)}
