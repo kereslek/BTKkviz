@@ -604,8 +604,8 @@ export default function Home() {
         Ez kizárólag szórakoztató és oktatási célú kvíz.
       </div>
 
-      <header className="p-4 md:p-6 text-center bg-gradient-to-b from-[#001f3f] to-transparent">
-        <h1 className="text-7xl md:text-9xl font-extrabold text-red-500 tracking-tight drop-shadow-lg">BTK kvíz</h1>
+      <header className="p-2 md:p-3 text-center bg-gradient-to-b from-[#001f3f] to-transparent">
+        <h1 className="text-4xl md:text-5xl font-extrabold text-red-500 tracking-tight drop-shadow-lg">BTK kvíz</h1>
         <p className="text-lg md:text-xl mt-2 text-gray-300 font-medium">
           Találd ki a bűntényt ránézésre! 🔥 Napi friss rendőrségi körözési lista alapján 🕵️‍♂️
         </p>
