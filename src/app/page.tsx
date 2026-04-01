@@ -44,7 +44,7 @@ export default function Home() {
   const [usedCriminalIds, setUsedCriminalIds] = useState<Set<string>>(new Set());
   const [usedCrimesGlobal, setUsedCrimesGlobal] = useState<Set<string>>(new Set());
   const [showFeedback, setShowFeedback] = useState(false);
-  const [chatOpen, setChatOpen] = useState(true);
+  const [chatOpen, setChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState('');
   const [chatNickname, setChatNickname] = useState('Névtelen');
@@ -120,8 +120,7 @@ export default function Home() {
 
   useEffect(() => {
     const checkMobile = () => {
-      if (window.innerWidth < 768) setChatOpen(false);
-      else setChatOpen(true);
+      // chat starts minimized by default
     };
     checkMobile();
     window.addEventListener('resize', checkMobile);
