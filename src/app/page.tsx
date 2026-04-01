@@ -658,12 +658,12 @@ export default function Home() {
                       <img
                         src={current.criminal.photo_url}
                         alt={current.criminal.name}
-                        className="w-32 h-40 object-cover mx-auto rounded-2xl border-2 border-white/80 shadow-lg"
+                        className="w-52 h-64 object-cover mx-auto rounded-2xl border-2 border-white/80 shadow-lg"
                         onError={(e) => (e.currentTarget.style.display = 'none')}
                       />
                     </a>
                   ) : (
-                    <div className="w-32 h-40 bg-gray-800 mx-auto rounded-2xl flex items-center justify-center text-gray-400 text-sm border-2 border-white/80 shadow-lg">
+                    <div className="w-52 h-64 bg-gray-800 mx-auto rounded-2xl flex items-center justify-center text-gray-400 text-sm border-2 border-white/80 shadow-lg">
                       Nincs fotó
                     </div>
                   )}
@@ -674,7 +674,7 @@ export default function Home() {
                     onClick={generateQuestionShare}
                     className="absolute top-2 right-2 md:top-4 md:right-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white p-3 md:p-4 rounded-full shadow-2xl transform hover:scale-105 transition-all duration-300"
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 0 00-5.367-2.684z" />
                     </svg>
                   </button>
@@ -684,7 +684,7 @@ export default function Home() {
                   {current.options.map((opt, idx) => {
                     const isSelected = current.selectedAnswer === opt;
                     const isCorrect = opt === current.correctCrime;
-                    let buttonClass = 'p-2 md:p-3 rounded-xl text-sm font-bold transition-all duration-300 shadow border-2 border-transparent';
+                    let buttonClass = 'p-1.5 rounded-lg text-xs font-bold transition-all duration-300 shadow border-2 border-transparent';
                     if (isSelected && !isCorrect) {
                       buttonClass += ' bg-red-600 text-white border-red-400 ring-4 ring-red-300/50';
                     } else if ((isSelected && isCorrect) || (showFeedback && isCorrect)) {
