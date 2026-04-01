@@ -667,7 +667,7 @@ export default function Home() {
                       Nincs fotó
                     </div>
                   )}
-                  <h2 className="text-lg font-extrabold mt-2 text-yellow-400 drop-shadow-lg">
+                  <h2 className="text-3xl font-extrabold mt-2 text-yellow-400 drop-shadow-lg">
                     {current.criminal.name || 'Ismeretlen'}
                   </h2>
                   <button
