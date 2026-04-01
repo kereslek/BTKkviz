@@ -611,7 +611,7 @@ export default function Home() {
         </p>
       </header>
 
-      <main className="flex-grow p-4 md:p-6">
+      <main className="flex-grow p-2 md:p-3">
         {loading ? (
           <div className="text-center py-12 md:py-16">
             <p className="text-2xl md:text-4xl text-yellow-300 font-bold">Betöltés... 🔥</p>
@@ -629,15 +629,15 @@ export default function Home() {
             </button>
           </div>
         ) : !gameOver ? (
-          <div className="max-w-4xl mx-auto">
-            <div className="text-center mb-4 md:mb-6">
-              <p className="text-xl md:text-3xl font-extrabold text-yellow-400 drop-shadow-md">
+          <div className="max-w-2xl mx-auto">
+            <div className="text-center mb-2">
+              <p className="text-base font-extrabold text-yellow-400 drop-shadow-md">
                 Pontjaid: {score} pont
               </p>
               <p className="text-base md:text-lg mt-1 text-gray-300">
                 Streak: <span className="text-orange-400 font-bold">{streak} 🔥</span> | Kérdés {current ? current.questionNumber : 0}/10
               </p>
-              <div className="mt-3 w-full max-w-md mx-auto bg-gray-700 rounded-full h-3 overflow-hidden shadow-inner">
+              <div className="mt-1 w-full max-w-md mx-auto bg-gray-700 rounded-full h-2 overflow-hidden shadow-inner">
                 <div
                   className="bg-gradient-to-r from-green-500 via-emerald-400 to-teal-500 h-full transition-all duration-500 ease-out"
                   style={{ width: `${progressPercentage}%` }}
@@ -646,8 +646,8 @@ export default function Home() {
             </div>
 
             {current && current.criminal ? (
-              <div className="bg-gradient-to-br from-gray-900 to-gray-800 p-4 md:p-6 rounded-3xl shadow-2xl border border-gray-700 relative">
-                <div className="text-center mb-4 md:mb-6">
+              <div className="bg-gradient-to-br from-gray-900 to-gray-800 p-3 rounded-2xl shadow border border-gray-700 relative">
+                <div className="text-center mb-2">
                   {current.criminal.photo_url ? (
                     <a
                       href={`https://www.police.hu/hu/koral/elfogatoparancs-alapjan-korozott-szemelyek/${current.criminal.police_id}`}
@@ -658,23 +658,23 @@ export default function Home() {
                       <img
                         src={current.criminal.photo_url}
                         alt={current.criminal.name}
-                        className="w-48 h-64 md:w-72 md:h-96 object-cover mx-auto rounded-3xl border-4 border-white/80 shadow-2xl transform hover:scale-105 transition-transform duration-300"
+                        className="w-32 h-40 object-cover mx-auto rounded-2xl border-2 border-white/80 shadow-lg"
                         onError={(e) => (e.currentTarget.style.display = 'none')}
                       />
                     </a>
                   ) : (
-                    <div className="w-48 h-64 md:w-72 md:h-96 bg-gray-800 mx-auto rounded-3xl flex items-center justify-center text-gray-400 text-xl border-4 border-white/80 shadow-2xl">
+                    <div className="w-32 h-40 bg-gray-800 mx-auto rounded-2xl flex items-center justify-center text-gray-400 text-sm border-2 border-white/80 shadow-lg">
                       Nincs fotó
                     </div>
                   )}
-                  <h2 className="text-2xl md:text-4xl font-extrabold mt-3 md:mt-5 text-yellow-400 drop-shadow-lg">
+                  <h2 className="text-lg font-extrabold mt-2 text-yellow-400 drop-shadow-lg">
                     {current.criminal.name || 'Ismeretlen'}
                   </h2>
                   <button
                     onClick={generateQuestionShare}
                     className="absolute top-2 right-2 md:top-4 md:right-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white p-3 md:p-4 rounded-full shadow-2xl transform hover:scale-105 transition-all duration-300"
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 md:h-9 md:w-9" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.367 2.684 3 0 00-5.367-2.684z" />
                     </svg>
                   </button>
@@ -684,7 +684,7 @@ export default function Home() {
                   {current.options.map((opt, idx) => {
                     const isSelected = current.selectedAnswer === opt;
                     const isCorrect = opt === current.correctCrime;
-                    let buttonClass = 'p-4 md:p-6 rounded-2xl text-base md:text-xl font-bold transition-all duration-300 shadow-lg border-2 border-transparent';
+                    let buttonClass = 'p-2 md:p-3 rounded-xl text-sm font-bold transition-all duration-300 shadow border-2 border-transparent';
                     if (isSelected && !isCorrect) {
                       buttonClass += ' bg-red-600 text-white border-red-400 ring-4 ring-red-300/50';
                     } else if ((isSelected && isCorrect) || (showFeedback && isCorrect)) {
@@ -712,14 +712,14 @@ export default function Home() {
                   <button
                     onClick={goBack}
                     disabled={currentIndex <= 0}
-                    className={`px-6 py-3 rounded-2xl font-bold text-base md:text-lg transition-all ${currentIndex <= 0 ? 'bg-gray-800 opacity-50 cursor-not-allowed' : 'bg-gradient-to-r from-gray-700 to-gray-800 hover:from-gray-600 hover:to-gray-700 shadow-lg active:scale-95'}`}
+                    className={`px-3 py-1.5 rounded-xl font-bold text-sm transition-all ${currentIndex <= 0 ? 'bg-gray-800 opacity-50 cursor-not-allowed' : 'bg-gradient-to-r from-gray-700 to-gray-800 hover:from-gray-600 hover:to-gray-700 shadow-lg active:scale-95'}`}
                   >
                     ← Vissza
                   </button>
                   <button
                     onClick={goForward}
                     disabled={isLatest}
-                    className={`px-6 py-3 rounded-2xl font-bold text-base md:text-lg transition-all ${isLatest ? 'bg-gray-800 opacity-50 cursor-not-allowed' : 'bg-gradient-to-r from-gray-700 to-gray-800 hover:from-gray-600 hover:to-gray-700 shadow-lg active:scale-95'}`}
+                    className={`px-3 py-1.5 rounded-xl font-bold text-sm transition-all ${isLatest ? 'bg-gray-800 opacity-50 cursor-not-allowed' : 'bg-gradient-to-r from-gray-700 to-gray-800 hover:from-gray-600 hover:to-gray-700 shadow-lg active:scale-95'}`}
                   >
                     Előre →
                   </button>
